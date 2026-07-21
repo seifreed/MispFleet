@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -36,7 +37,7 @@ from mispfleet.models import (
     ServerRole,
 )
 from mispfleet.models.attribute import tag_names
-from tests.support import contains, eq, ne, ok
+from tests.support import contains, eq, ne, not_contains, ok
 
 RAW_ATTRIBUTE = {
     "uuid": "1f2b8a1e-0000-4000-8000-000000000001",
@@ -51,7 +52,7 @@ RAW_ATTRIBUTE = {
     "Tag": [{"name": "tlp:green"}, {"colour": "#ffffff"}],
 }
 
-RAW_EVENT = {
+RAW_EVENT: dict[str, Any] = {
     "Event": {
         "uuid": "9c5c1c2e-0000-4000-8000-00000000000e",
         "info": "Campaign X",
@@ -302,3 +303,52 @@ def test_copy_plan_and_apply_result() -> None:
         destination_server="production",
     )
     ok(outcome.applied)
+
+
+def test_attribute_and_object_to_misp_round_trip() -> None:
+    full = MISPAttribute.from_misp(RAW_ATTRIBUTE)
+    payload = full.to_misp()
+    eq(payload["uuid"], full.uuid)
+    eq(payload["category"], "Network activity")
+    eq(payload["Tag"], [{"name": "tlp:green"}])
+    minimal = MISPAttribute(type="domain", value="x.example")
+    minimal_payload = minimal.to_misp()
+    not_contains(minimal_payload, "uuid")
+    not_contains(minimal_payload, "category")
+    obj = MISPObject.from_misp(RAW_EVENT["Event"]["Object"][0])
+    obj_payload = obj.to_misp()
+    eq(obj_payload["name"], "file")
+    eq(obj_payload["template_uuid"], "t-1")
+    eq(len(obj_payload["Attribute"]), 1)
+    bare_object = MISPObject(name="bare").to_misp()
+    not_contains(bare_object, "uuid")
+    not_contains(bare_object, "template_uuid")
+
+
+def test_event_to_misp_round_trip_preserves_fingerprint() -> None:
+    event = MISPEvent.from_misp(RAW_EVENT)
+    rebuilt = MISPEvent.from_misp({"Event": event.to_misp()})
+    eq(event.canonical_fingerprint(), rebuilt.canonical_fingerprint())
+    minimal = MISPEvent(uuid="ab5c1c2e-0000-4000-8000-00000000000e")
+    payload = minimal.to_misp()
+    not_contains(payload, "date")
+    not_contains(payload, "distribution")
+    not_contains(payload, "threat_level_id")
+    not_contains(payload, "analysis")
+
+
+def test_server_config_rejects_plain_http_by_default() -> None:
+    with pytest.raises(PydanticValidationError) as excinfo:
+        ServerConfig(
+            name="insecure",
+            url=AnyHttpUrl("http://misp.example"),
+            credential=CredentialReference(provider="env", key="X"),
+        )
+    contains(str(excinfo.value), "allow_insecure_http")
+    permitted = ServerConfig(
+        name="lab",
+        url=AnyHttpUrl("http://127.0.0.1:8080"),
+        credential=CredentialReference(provider="env", key="X"),
+        allow_insecure_http=True,
+    )
+    eq(permitted.allow_insecure_http, True)

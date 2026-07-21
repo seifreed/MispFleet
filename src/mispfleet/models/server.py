@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AnyHttpUrl, BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, Field, model_validator
 
 from mispfleet.models.common import ServerRole
 
@@ -50,3 +50,14 @@ class ServerConfig(BaseModel):
     concurrency: int = Field(default=5, ge=1)
     rate_limit: float | None = Field(default=None, gt=0.0)
     retry: RetryConfig = Field(default_factory=RetryConfig)
+    proxy: str | None = None
+    allow_insecure_http: bool = False
+
+    @model_validator(mode="after")
+    def _require_https_unless_explicitly_insecure(self) -> ServerConfig:
+        if self.url.scheme != "https" and not self.allow_insecure_http:
+            raise ValueError(
+                f"server {self.name!r} uses insecure scheme {self.url.scheme!r}; "
+                "set allow_insecure_http: true to accept the risk explicitly"
+            )
+        return self

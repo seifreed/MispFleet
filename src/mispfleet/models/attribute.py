@@ -42,6 +42,21 @@ class MISPAttribute(BaseModel):
             tags=tag_names(raw),
         )
 
+    def to_misp(self) -> dict[str, Any]:
+        """Serialize back into a MISP API attribute payload."""
+        payload: dict[str, Any] = {
+            "type": self.type,
+            "value": self.value,
+            "to_ids": self.to_ids,
+            "comment": self.comment,
+            "Tag": [{"name": name} for name in sorted(self.tags)],
+        }
+        if self.uuid is not None:
+            payload["uuid"] = self.uuid
+        if self.category is not None:
+            payload["category"] = self.category
+        return payload
+
 
 class MISPObject(BaseModel):
     """Normalized representation of a MISP object."""
@@ -62,3 +77,16 @@ class MISPObject(BaseModel):
             comment=str(raw.get("comment", "")),
             attributes=[MISPAttribute.from_misp(item) for item in raw.get("Attribute", [])],
         )
+
+    def to_misp(self) -> dict[str, Any]:
+        """Serialize back into a MISP API object payload."""
+        payload: dict[str, Any] = {
+            "name": self.name,
+            "comment": self.comment,
+            "Attribute": [attribute.to_misp() for attribute in self.attributes],
+        }
+        if self.uuid is not None:
+            payload["uuid"] = self.uuid
+        if self.template_uuid is not None:
+            payload["template_uuid"] = self.template_uuid
+        return payload

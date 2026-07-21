@@ -31,3 +31,23 @@ class CredentialResolver:
                 f"no credential provider registered for {reference.provider!r}"
             )
         return provider.resolve(reference.key)
+
+
+def default_resolver(
+    memory: CredentialProvider | None = None,
+    interactive: bool = True,
+) -> CredentialResolver:
+    """Build the standard resolver covering every MVP credential provider."""
+    from mispfleet.credentials.environment import EnvironmentCredentialProvider
+    from mispfleet.credentials.keyring import KeyringCredentialProvider
+    from mispfleet.credentials.memory import MemoryCredentialProvider
+    from mispfleet.credentials.prompt import PromptCredentialProvider
+
+    providers: dict[str, CredentialProvider] = {
+        "env": EnvironmentCredentialProvider(),
+        "keyring": KeyringCredentialProvider(),
+        "memory": memory or MemoryCredentialProvider(),
+    }
+    if interactive:
+        providers["prompt"] = PromptCredentialProvider()
+    return CredentialResolver(providers)

@@ -51,6 +51,28 @@ class MISPEvent(BaseModel):
             objects=[MISPObject.from_misp(item) for item in event.get("Object", [])],
         )
 
+    def to_misp(self) -> dict[str, Any]:
+        """Serialize back into a MISP API event payload."""
+        payload: dict[str, Any] = {
+            "uuid": self.uuid,
+            "info": self.info,
+            "published": self.published,
+            "Tag": [{"name": name} for name in sorted(self.tags)],
+            "Attribute": [attribute.to_misp() for attribute in self.attributes],
+            "Object": [obj.to_misp() for obj in self.objects],
+        }
+        if self.date is not None:
+            payload["date"] = self.date
+        if self.distribution is not None:
+            payload["distribution"] = self.distribution
+        if self.threat_level is not None:
+            payload["threat_level_id"] = self.threat_level
+        if self.analysis is not None:
+            payload["analysis"] = self.analysis
+        if self.orgc is not None:
+            payload["Orgc"] = {"name": self.orgc}
+        return payload
+
     def canonical_fingerprint(self) -> str:
         """Deterministic SHA-256 fingerprint of the canonical event content.
 

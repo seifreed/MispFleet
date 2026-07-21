@@ -118,3 +118,14 @@ def test_resolver_dispatches_and_rejects_unknown_provider() -> None:
     eq(resolver.resolve(CredentialReference(provider="memory", key="prod")), "secret")
     with pytest.raises(CredentialResolutionError):
         resolver.resolve(CredentialReference(provider="env", key="prod"))
+
+
+def test_default_resolver_registers_all_mvp_providers() -> None:
+    from mispfleet.credentials.base import default_resolver
+
+    interactive = default_resolver()
+    eq(sorted(interactive._providers), ["env", "keyring", "memory", "prompt"])
+    memory = MemoryCredentialProvider({"prod": "secret"})
+    non_interactive = default_resolver(memory=memory, interactive=False)
+    eq(sorted(non_interactive._providers), ["env", "keyring", "memory"])
+    eq(non_interactive.resolve(CredentialReference(provider="memory", key="prod")), "secret")

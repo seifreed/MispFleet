@@ -87,6 +87,15 @@ class ConflictError(APIError):
 class RateLimitError(APIError):
     """The server rejected the request due to rate limiting."""
 
+    def __init__(
+        self,
+        message: str,
+        context: ErrorContext | None = None,
+        retry_after: float | None = None,
+    ) -> None:
+        super().__init__(message, context)
+        self.retry_after = retry_after
+
 
 class ValidationError(APIError):
     """The server rejected the request payload as invalid."""
