@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
@@ -71,6 +73,25 @@ class CopyPlan(OperationPlan):
     warnings: list[OperationWarning] = Field(default_factory=list)
     blocking_errors: list[PlanIssue] = Field(default_factory=list)
     proposed_event: MISPEvent
+
+    def fingerprint(self) -> str:
+        """Deterministic fingerprint of the plan's decision-relevant content.
+
+        Identifiers and timestamps are excluded so regenerating an identical
+        plan yields an identical fingerprint.
+        """
+        canonical = {
+            "kind": self.kind,
+            "source_server": self.source_server,
+            "destination_server": self.destination_server,
+            "source_event_uuid": str(self.source_event_uuid),
+            "source_fingerprint": self.source_fingerprint,
+            "policy": self.policy,
+            "on_conflict": self.on_conflict.value,
+            "proposed_event": self.proposed_event.canonical_fingerprint(),
+        }
+        payload = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 class ApplyResult(BaseModel):
