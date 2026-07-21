@@ -35,6 +35,7 @@ class FakeMisp:
     def __init__(self) -> None:
         self.events: dict[str, dict[str, Any]] = {}
         self.attributes: list[dict[str, Any]] = []
+        self.templates: list[dict[str, Any]] = []
         self.version_payload: dict[str, Any] = {"version": "2.4.190", "perm_sync": True}
         self.scripted: list[tuple[int, dict[str, str], str]] = []
         self.delay: float = 0.0
@@ -50,7 +51,9 @@ class FakeMisp:
         self._thread.start()
 
     def stop(self) -> None:
-        """Shut the server down and join its thread."""
+        """Shut the server down and join its thread; safe to call twice."""
+        if not self._thread.is_alive():
+            return
         self._server.shutdown()
         self._server.server_close()
         self._thread.join(timeout=5)
@@ -154,6 +157,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if self.command == "GET" and self.path == "/servers/getVersion":
             self._reply(200, app.version_payload)
+            return
+        if self.command == "GET" and self.path == "/objectTemplates":
+            self._reply(200, app.templates)
             return
         if self.command == "GET" and self.path in _LIST_ROUTES:
             self._reply(200, [])
