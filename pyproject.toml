@@ -1,0 +1,96 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mispfleet"
+dynamic = ["version"]
+description = "Async Python library and CLI to operate multiple MISP instances as a coordinated fleet."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.14,<3.15"
+authors = [{ name = "Marc Rivero", email = "marc.rivero@blackdogs.io" }]
+keywords = ["misp", "threat-intelligence", "federation", "cti", "security"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Information Technology",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+    "Typing :: Typed",
+]
+dependencies = [
+    "httpx>=0.28",
+    "typer>=0.27",
+    "rich>=15.0",
+    "pydantic>=2.13",
+    "pydantic-settings>=2.14",
+    "ruamel.yaml>=0.19",
+    "aiosqlite>=0.22",
+    "platformdirs>=4.11",
+]
+
+[project.optional-dependencies]
+keyring = ["keyring>=25.0"]
+dev = [
+    "keyring>=25.0",
+    "black>=26.5",
+    "ruff>=0.15",
+    "mypy>=2.3",
+    "pytest>=9.1",
+    "pytest-asyncio>=1.4",
+    "pytest-cov>=7.1",
+    "hypothesis>=6.150",
+    "bandit>=1.9",
+    "pip-audit>=2.10",
+    "build>=1.5",
+    "twine>=6.2",
+    "mkdocs-material>=9.6",
+]
+
+[project.scripts]
+mispfleet = "mispfleet.cli.app:main"
+
+[project.urls]
+Homepage = "https://github.com/seifreed/MispFleet"
+Repository = "https://github.com/seifreed/MispFleet"
+Changelog = "https://github.com/seifreed/MispFleet/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "src/mispfleet/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mispfleet"]
+
+[tool.black]
+line-length = 100
+target-version = ["py314"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+mypy_path = "src"
+explicit_package_bases = true
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--cov=mispfleet --cov-report=term-missing --cov-fail-under=100"
+
+[tool.coverage.run]
+branch = true
+
+[tool.coverage.paths]
+source = ["src/mispfleet"]
