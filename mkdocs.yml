@@ -1,0 +1,32 @@
+site_name: MispFleet
+site_description: Async Python library and CLI to operate multiple MISP instances as a coordinated fleet.
+repo_url: https://github.com/seifreed/MispFleet
+theme:
+  name: material
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
+nav:
+  - Home: index.md
+  - Installation & Quick start: quickstart.md
+  - Configuration: configuration.md
+  - Credential security: credentials.md
+  - Federated search: search.md
+  - Health checks: health.md
+  - Event diff: diff.md
+  - Copy planning & policies: copy.md
+  - Python API: api.md
+  - CLI reference & exit codes: cli.md
+  - Plugins: plugins.md
+  - Security model: security.md
+  - Compatibility & troubleshooting: compatibility.md
