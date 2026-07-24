@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -201,10 +202,15 @@ async def test_invalid_json_response_redacts_secrets_in_excerpt(fake_misp: FakeM
 
 
 async def test_rate_limited_transport_spaces_requests(fake_misp: FakeMisp) -> None:
-    transport = transport_for(fake_misp, rate_limit=100.0)
+    # A low rate (4 req/s → 250ms spacing) guarantees the second request is
+    # throttled: the localhost round trip is far shorter than the interval.
+    transport = transport_for(fake_misp, rate_limit=4.0)
     try:
+        loop = asyncio.get_running_loop()
+        start = loop.time()
         await transport.request("GET", "/servers/getVersion")
         await transport.request("GET", "/servers/getVersion")
+        ok(loop.time() - start >= 0.25)
         eq(len(fake_misp.requests_seen), 2)
     finally:
         await transport.aclose()

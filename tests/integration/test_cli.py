@@ -11,6 +11,9 @@ from typer.testing import CliRunner
 
 from mispfleet.cli.app import app
 from tests.fake_misp import API_KEY, FakeMisp
+from tests.fake_opencti import TOKEN as OPENCTI_TOKEN
+from tests.fake_opencti import VERSION as OPENCTI_VERSION
+from tests.fake_opencti import FakeOpenCTI
 from tests.fake_taxii import COLLECTION_ID as TAXII_COLLECTION
 from tests.fake_taxii import TOKEN as TAXII_TOKEN
 from tests.fake_taxii import FakeTaxii
@@ -809,4 +812,90 @@ def test_stix_export_requires_exactly_one_server(
 ) -> None:
     config, _, _ = cli_servers
     code, _ = invoke(["stix", "export", EVENT_UUID], env, config)
+    eq(code, 2)
+
+
+@pytest.fixture
+def opencti_server() -> Iterator[FakeOpenCTI]:
+    server = FakeOpenCTI()
+    server.start()
+    yield server
+    server.stop()
+
+
+def test_opencti_test_and_push(
+    cli_servers: tuple[Path, FakeMisp, FakeMisp],
+    env: dict[str, str],
+    opencti_server: FakeOpenCTI,
+) -> None:
+    config, research, _production = cli_servers
+    research.add_event(
+        {
+            "uuid": EVENT_UUID,
+            "info": "Campaign X",
+            "timestamp": "1700000000",
+            "Tag": [{"name": "tlp:green"}],
+            "Attribute": [{"type": "domain", "value": "evil.example"}],
+        }
+    )
+    octi_env = dict(env)
+    octi_env["MISPFLEET_OPENCTI_TOKEN"] = OPENCTI_TOKEN
+    code, output = invoke(
+        [
+            "opencti",
+            "test",
+            "--opencti-url",
+            opencti_server.url,
+            "--credential-key",
+            "MISPFLEET_OPENCTI_TOKEN",
+        ],
+        octi_env,
+        config,
+    )
+    eq(code, 0)
+    contains(output, OPENCTI_VERSION)
+    code, output = invoke(
+        [
+            "--server",
+            "research",
+            "--format",
+            "json",
+            "opencti",
+            "push",
+            EVENT_UUID,
+            "--opencti-url",
+            opencti_server.url,
+            "--credential-key",
+            "MISPFLEET_OPENCTI_TOKEN",
+        ],
+        octi_env,
+        config,
+    )
+    eq(code, 0)
+    payload = json.loads(output)
+    eq(payload["work_id"], "work-1")
+    eq(len(opencti_server.pushed), 1)
+
+
+def test_opencti_push_requires_one_server(
+    cli_servers: tuple[Path, FakeMisp, FakeMisp],
+    env: dict[str, str],
+    opencti_server: FakeOpenCTI,
+) -> None:
+    config, _, _ = cli_servers
+    octi_env = dict(env)
+    octi_env["MISPFLEET_OPENCTI_TOKEN"] = OPENCTI_TOKEN
+    code, _ = invoke(
+        [
+            "opencti",
+            "push",
+            EVENT_UUID,
+            "--opencti-url",
+            opencti_server.url,
+            "--credential-key",
+            "MISPFLEET_OPENCTI_TOKEN",
+        ],
+        octi_env,
+        config,
+    )
     eq(code, 2)

@@ -12,6 +12,7 @@ from typer.core import TyperGroup
 from mispfleet._version import __version__
 from mispfleet.cli.commands import config as config_commands
 from mispfleet.cli.commands import event as event_commands
+from mispfleet.cli.commands import opencti as opencti_commands
 from mispfleet.cli.commands import plugins as plugin_commands
 from mispfleet.cli.commands import policy as policy_commands
 from mispfleet.cli.commands import search as search_commands
@@ -94,6 +95,7 @@ app.add_typer(policy_commands.app, name="policy")
 app.add_typer(state_commands.app, name="state")
 app.add_typer(sync_commands.app, name="sync")
 app.add_typer(stix_commands.app, name="stix")
+app.add_typer(opencti_commands.app, name="opencti")
 app.add_typer(plugin_commands.app, name="plugins")
 app.command("apply")(apply_plan)
 
