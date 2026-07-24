@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import platformdirs
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic import ValidationError as PydanticValidationError
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
@@ -15,6 +15,9 @@ from ruamel.yaml.error import YAMLError
 from mispfleet.exceptions import InvalidConfigurationError
 from mispfleet.models.server import ServerConfig
 from mispfleet.policies.base import PolicySpec
+from mispfleet.state.base import StateBackend
+from mispfleet.state.mariadb import MariaDBStateBackend
+from mispfleet.state.sqlite import SqliteStateBackend
 
 APP_NAME = "mispfleet"
 SUPPORTED_CONFIG_VERSION = 1
@@ -35,13 +38,39 @@ class FleetDefaults(BaseModel):
     concurrency: int = Field(default=5, ge=1)
 
 
+class StateSettings(BaseModel):
+    """Selection and location of the local state backend."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    backend: Literal["sqlite", "mariadb"] = "sqlite"
+    path: Path | None = None
+    dsn: str | None = None
+    password_env: str | None = None
+
+    @model_validator(mode="after")
+    def _require_dsn_for_mariadb(self) -> StateSettings:
+        if self.backend == "mariadb" and not self.dsn:
+            raise ValueError("state backend 'mariadb' requires a dsn (mysql://user@host/db)")
+        return self
+
+
+def build_state_backend(settings: StateSettings) -> StateBackend:
+    """Instantiate the configured state backend (not yet initialized)."""
+    if settings.backend == "mariadb":
+        password = os.environ.get(settings.password_env) if settings.password_env else None
+        return MariaDBStateBackend(settings.dsn or "", password=password)
+    return SqliteStateBackend(settings.path or default_state_path())
+
+
 class FleetConfig(BaseModel):
-    """Validated fleet configuration: servers, defaults and policies."""
+    """Validated fleet configuration: servers, defaults, policies and state."""
 
     version: int = SUPPORTED_CONFIG_VERSION
     defaults: FleetDefaults = Field(default_factory=FleetDefaults)
     servers: dict[str, ServerConfig] = Field(default_factory=dict)
     policies: dict[str, PolicySpec] = Field(default_factory=dict)
+    state: StateSettings = Field(default_factory=StateSettings)
 
 
 def default_config_path() -> Path:
@@ -132,7 +161,14 @@ def load_fleet_config(path: Path | None = None, profile: str | None = None) -> F
             str(name): PolicySpec.model_validate(spec or {})
             for name, spec in (data.get("policies") or {}).items()
         }
+        state = StateSettings.model_validate(data.get("state") or {})
     except PydanticValidationError as error:
         raise InvalidConfigurationError(str(error)) from error
     servers = _build_servers(data.get("servers") or {}, defaults)
-    return FleetConfig(version=version, defaults=defaults, servers=servers, policies=policies)
+    return FleetConfig(
+        version=version,
+        defaults=defaults,
+        servers=servers,
+        policies=policies,
+        state=state,
+    )

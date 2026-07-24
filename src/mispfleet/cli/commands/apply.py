@@ -12,8 +12,6 @@ from pydantic import ValidationError as PydanticValidationError
 from mispfleet.cli.context import EXIT_SUCCESS, EXIT_USAGE, run, state_of
 from mispfleet.models.plan import CopyPlan
 from mispfleet.output.renderers import render_apply_result
-from mispfleet.settings import default_state_path
-from mispfleet.state.sqlite import SqliteStateBackend
 
 
 def apply_plan(
@@ -30,7 +28,7 @@ def apply_plan(
         raise typer.Exit(EXIT_USAGE) from error
 
     async def inner() -> int:
-        backend = SqliteStateBackend(default_state_path())
+        backend = state.state_backend()
         await backend.initialize()
         try:
             async with state.build_fleet(state_backend=backend) as fleet:

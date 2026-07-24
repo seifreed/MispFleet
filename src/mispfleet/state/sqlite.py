@@ -41,6 +41,11 @@ class SqliteStateBackend:
         """Location of the database file."""
         return self._path
 
+    @property
+    def location(self) -> str:
+        """Credential-free description of where state lives."""
+        return str(self._path)
+
     async def initialize(self) -> None:
         """Create the schema and restrict file permissions."""
         self._path.parent.mkdir(parents=True, exist_ok=True)

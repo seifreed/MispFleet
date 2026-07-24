@@ -10,16 +10,15 @@ import typer
 from rich.console import Console
 
 from mispfleet.cli.context import EXIT_SUCCESS, CLIState, parse_duration, run, state_of
-from mispfleet.settings import default_state_path
-from mispfleet.state.sqlite import SqliteStateBackend
+from mispfleet.state.base import StateBackend
 
 app = typer.Typer(help="Inspect and prune local state.")
 checkpoint_app = typer.Typer(help="Manage checkpoints.")
 app.add_typer(checkpoint_app, name="checkpoint")
 
 
-async def _with_backend(state: CLIState) -> SqliteStateBackend:
-    backend = SqliteStateBackend(default_state_path())
+async def _with_backend(state: CLIState) -> StateBackend:
+    backend = state.state_backend()
     await backend.initialize()
     return backend
 
@@ -37,7 +36,7 @@ def info(ctx: typer.Context) -> None:
         finally:
             await backend.close()
         payload = {
-            "path": str(backend.path),
+            "location": backend.location,
             "checkpoints": len(checkpoints),
             "operations": len(operations),
         }
@@ -45,7 +44,7 @@ def info(ctx: typer.Context) -> None:
             "state-info",
             payload,
             render=lambda console: console.print(
-                f"{backend.path}: {len(checkpoints)} checkpoint(s), "
+                f"{backend.location}: {len(checkpoints)} checkpoint(s), "
                 f"{len(operations)} operation(s)"
             ),
         )

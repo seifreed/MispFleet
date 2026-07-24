@@ -20,6 +20,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
+      - name: Provision MariaDB (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y mariadb-server
+      - name: Provision MariaDB (macOS)
+        if: runner.os == 'macOS'
+        run: brew install mariadb
+      - name: Provision MariaDB (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          choco install mariadb -y --no-progress
+          "/c/Program Files/MariaDB"*/bin/mysql.exe -u root \
+            -e "CREATE DATABASE IF NOT EXISTS mispfleet_test"
+          echo "MISPFLEET_TEST_MARIADB_DSN=mysql://root@127.0.0.1:3306/mispfleet_test" \
+            >> "$GITHUB_ENV"
       - name: Install
         run: |
           python -m pip install --upgrade pip

@@ -25,8 +25,6 @@ from mispfleet.models.event import MISPEvent
 from mispfleet.models.plan import ConflictAction, CopyPlan
 from mispfleet.output.renderers import render_apply_result, render_diff, render_plan
 from mispfleet.output.serializers import document, serialize
-from mispfleet.settings import default_state_path
-from mispfleet.state.sqlite import SqliteStateBackend
 
 app = typer.Typer(help="Work with events across the fleet.")
 
@@ -136,7 +134,7 @@ def copy(
     state = state_of(ctx)
 
     async def inner() -> int:
-        backend = SqliteStateBackend(default_state_path())
+        backend = state.state_backend()
         await backend.initialize()
         try:
             async with state.build_fleet(state_backend=backend) as fleet:

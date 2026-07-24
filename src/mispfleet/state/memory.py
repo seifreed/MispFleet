@@ -16,6 +16,11 @@ class MemoryStateBackend:
         self._checkpoints: dict[UUID, Checkpoint] = {}
         self._operations: list[OperationRecord] = []
 
+    @property
+    def location(self) -> str:
+        """Credential-free description of where state lives."""
+        return "memory"
+
     async def initialize(self) -> None:
         """Nothing to prepare for the in-memory backend."""
 

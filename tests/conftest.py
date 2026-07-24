@@ -1,7 +1,8 @@
-"""Shared fixtures: every test talks to a real local HTTP server."""
+"""Shared fixtures: every test talks to real local servers."""
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 
 import pytest
@@ -9,6 +10,20 @@ from pydantic import AnyHttpUrl
 
 from mispfleet.models.server import CredentialReference, RetryConfig, ServerConfig
 from tests.fake_misp import FakeMisp
+from tests.mariadb_server import EphemeralMariaDB
+
+
+@pytest.fixture(scope="session")
+def mariadb_dsn() -> Iterator[str]:
+    """DSN of a real MariaDB server: external via env var, or ephemeral."""
+    override = os.environ.get("MISPFLEET_TEST_MARIADB_DSN")
+    if override:
+        yield override
+        return
+    server = EphemeralMariaDB()
+    server.start()
+    yield server.dsn
+    server.stop()
 
 
 @pytest.fixture

@@ -44,6 +44,11 @@ class OperationRecord(BaseModel):
 class StateBackend(Protocol):
     """Persistence contract for checkpoints and operation records."""
 
+    @property
+    def location(self) -> str:
+        """Credential-free description of where state lives."""
+        ...
+
     async def initialize(self) -> None:
         """Prepare the backend (create schema, directories, permissions)."""
         ...

@@ -32,7 +32,7 @@ from mispfleet.fleet import MispFleet, ServerSelector
 from mispfleet.logging import configure_cli_logging
 from mispfleet.models.common import ServerRole
 from mispfleet.output.serializers import document, serialize
-from mispfleet.settings import FleetConfig, load_fleet_config
+from mispfleet.settings import FleetConfig, build_state_backend, load_fleet_config
 from mispfleet.state.base import StateBackend
 
 EXIT_SUCCESS = 0
@@ -149,6 +149,10 @@ class CLIState:
                 }
             )
         return config
+
+    def state_backend(self) -> StateBackend:
+        """Instantiate the configured state backend (not yet initialized)."""
+        return build_state_backend(self.load_config().state)
 
     def build_fleet(self, state_backend: StateBackend | None = None) -> MispFleet:
         """Build the fleet from configuration; interactive prompts obey flags."""
