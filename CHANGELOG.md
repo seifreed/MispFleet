@@ -18,3 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Policy engine with configuration-driven built-in policies.
 - SQLite and in-memory state backends.
 - Typer-based CLI with JSON, JSONL, YAML and table output.
+- MariaDB state backend for shared operational state (`mariadb` extra).
+- Declarative bidirectional synchronization jobs with conflict strategies.
+- STIX 2.1 export and TAXII 2.1 push client.
+- OpenCTI integration pushing STIX bundles over GraphQL.

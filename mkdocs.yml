@@ -25,6 +25,9 @@ nav:
   - Health checks: health.md
   - Event diff: diff.md
   - Copy planning & policies: copy.md
+  - Synchronization: sync.md
+  - State backends: state.md
+  - STIX, TAXII & OpenCTI: stix.md
   - Python API: api.md
   - CLI reference & exit codes: cli.md
   - Plugins: plugins.md

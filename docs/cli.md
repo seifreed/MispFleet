@@ -7,6 +7,9 @@ mispfleet
 ├── search      value | events | attributes
 ├── event       get | find | diff | copy | export | validate
 ├── policy      list | show | validate | test
+├── sync        list | plan | run
+├── stix        export | push
+├── opencti     test | push
 ├── state       info | checkpoints | checkpoint show/delete | operations | prune
 ├── plugins     list
 ├── apply       PLAN_FILE

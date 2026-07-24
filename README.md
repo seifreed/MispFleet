@@ -16,9 +16,11 @@ instances through one consistent asynchronous interface.
 - Automatic pagination and memory-safe streaming.
 - Health and capability checks per server.
 - Event retrieval, comparison (diff) and safe copy with plan / dry-run / apply.
+- Bidirectional synchronization jobs with conflict-resolution strategies.
 - Policy engine for tag, distribution and content governance.
+- STIX 2.1 export, TAXII 2.1 push and OpenCTI integration.
 - Secure credential resolution (environment, OS keyring, prompt, in-memory).
-- Local SQLite state for checkpoints and audit records.
+- Local SQLite or shared MariaDB state for checkpoints and audit records.
 - JSON, JSONL, YAML and terminal-table output.
 
 ## Installation
