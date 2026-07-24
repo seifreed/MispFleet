@@ -11,6 +11,9 @@ from typer.testing import CliRunner
 
 from mispfleet.cli.app import app
 from tests.fake_misp import API_KEY, FakeMisp
+from tests.fake_taxii import COLLECTION_ID as TAXII_COLLECTION
+from tests.fake_taxii import TOKEN as TAXII_TOKEN
+from tests.fake_taxii import FakeTaxii
 from tests.support import contains, eq, not_contains, ok
 
 EVENT_UUID = "9c5c1c2e-0000-4000-8000-00000000000e"
@@ -739,3 +742,71 @@ def test_sync_cli_empty_job_list(env: dict[str, str], tmp_path: Path) -> None:
     code, output = invoke(["sync", "list"], env, config)
     eq(code, 0)
     contains(output, "no sync jobs configured")
+
+
+@pytest.fixture
+def taxii_server() -> Iterator[FakeTaxii]:
+    server = FakeTaxii()
+    server.start()
+    yield server
+    server.stop()
+
+
+def test_stix_export_and_taxii_push(
+    cli_servers: tuple[Path, FakeMisp, FakeMisp],
+    env: dict[str, str],
+    taxii_server: FakeTaxii,
+) -> None:
+    config, research, _production = cli_servers
+    research.add_event(
+        {
+            "uuid": EVENT_UUID,
+            "info": "Campaign X",
+            "timestamp": "1700000000",
+            "Tag": [{"name": "tlp:green"}],
+            "Attribute": [
+                {"type": "domain", "value": "evil.example"},
+                {"type": "passport-number", "value": "X123"},
+            ],
+        }
+    )
+    code, output = invoke(
+        ["--server", "research", "--format", "json", "stix", "export", EVENT_UUID], env, config
+    )
+    eq(code, 0)
+    payload = json.loads(output)
+    eq(payload["bundle"]["type"], "bundle")
+    contains(payload["skipped"], "passport-number")
+    code, output = invoke(["--server", "research", "stix", "export", EVENT_UUID], env, config)
+    eq(code, 0)
+    contains(output, "skipped")
+    push_env = dict(env)
+    push_env["MISPFLEET_TAXII_TOKEN"] = TAXII_TOKEN
+    code, output = invoke(
+        [
+            "--server",
+            "research",
+            "stix",
+            "push",
+            EVENT_UUID,
+            "--taxii-url",
+            taxii_server.url,
+            "--collection",
+            TAXII_COLLECTION,
+            "--credential-key",
+            "MISPFLEET_TAXII_TOKEN",
+        ],
+        push_env,
+        config,
+    )
+    eq(code, 0)
+    contains(output, "pushed")
+    ok(len(taxii_server.pushed) >= 1)
+
+
+def test_stix_export_requires_exactly_one_server(
+    cli_servers: tuple[Path, FakeMisp, FakeMisp], env: dict[str, str]
+) -> None:
+    config, _, _ = cli_servers
+    code, _ = invoke(["stix", "export", EVENT_UUID], env, config)
+    eq(code, 2)
