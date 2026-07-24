@@ -29,6 +29,14 @@ class EventsNamespace:
         data = await self._transport.request("GET", f"/events/view/{quote(event_id, safe='')}")
         return MISPEvent.from_misp(data)
 
+    async def index(self, tags: set[str] | None = None) -> list[dict[str, Any]]:
+        """List event metadata, optionally filtered by event tags."""
+        body: dict[str, Any] = {}
+        if tags:
+            body["tag"] = sorted(tags)
+        data = await self._transport.request("POST", "/events/index", json_body=body)
+        return list(data)
+
     async def add(self, event: MISPEvent) -> MISPEvent:
         """Create a new event; never retried because creation is not idempotent."""
         data = await self._transport.request(

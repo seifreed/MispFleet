@@ -14,6 +14,7 @@ from ruamel.yaml.error import YAMLError
 
 from mispfleet.exceptions import InvalidConfigurationError
 from mispfleet.models.server import ServerConfig
+from mispfleet.models.sync import SyncJobSpec
 from mispfleet.policies.base import PolicySpec
 from mispfleet.state.base import StateBackend
 from mispfleet.state.mariadb import MariaDBStateBackend
@@ -70,6 +71,7 @@ class FleetConfig(BaseModel):
     defaults: FleetDefaults = Field(default_factory=FleetDefaults)
     servers: dict[str, ServerConfig] = Field(default_factory=dict)
     policies: dict[str, PolicySpec] = Field(default_factory=dict)
+    sync_jobs: dict[str, SyncJobSpec] = Field(default_factory=dict)
     state: StateSettings = Field(default_factory=StateSettings)
 
 
@@ -162,6 +164,10 @@ def load_fleet_config(path: Path | None = None, profile: str | None = None) -> F
             for name, spec in (data.get("policies") or {}).items()
         }
         state = StateSettings.model_validate(data.get("state") or {})
+        sync_jobs = {
+            str(name): SyncJobSpec.model_validate(spec or {})
+            for name, spec in (data.get("sync_jobs") or {}).items()
+        }
     except PydanticValidationError as error:
         raise InvalidConfigurationError(str(error)) from error
     servers = _build_servers(data.get("servers") or {}, defaults)
@@ -170,5 +176,6 @@ def load_fleet_config(path: Path | None = None, profile: str | None = None) -> F
         defaults=defaults,
         servers=servers,
         policies=policies,
+        sync_jobs=sync_jobs,
         state=state,
     )

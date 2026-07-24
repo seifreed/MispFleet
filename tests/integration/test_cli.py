@@ -630,3 +630,112 @@ def test_templates_diff_reports_asymmetries(
     eq(code, 0)
     contains(output, "only on research: network")
     contains(output, "only on production: prod-only")
+
+
+@pytest.fixture
+def sync_config(tmp_path: Path) -> Iterator[tuple[Path, FakeMisp, FakeMisp]]:
+    left = FakeMisp()
+    right = FakeMisp()
+    left.start()
+    right.start()
+    config = tmp_path / "sync-config.yml"
+    config.write_text(
+        f"""
+version: 1
+servers:
+  left:
+    url: {left.url}
+    credential: {{provider: env, key: {ENV_KEY}}}
+    allow_insecure_http: true
+  right:
+    url: {right.url}
+    credential: {{provider: env, key: {ENV_KEY}}}
+    allow_insecure_http: true
+policies:
+  reject-all:
+    reject_if:
+      tags: ["sync:me"]
+sync_jobs:
+  mirror:
+    left: left
+    right: right
+    on_conflict: newer-wins
+  blocked:
+    left: left
+    right: right
+    direction: push
+    policy_left_to_right: reject-all
+""",
+        encoding="utf-8",
+    )
+    yield config, left, right
+    left.stop()
+    right.stop()
+
+
+def seed_sync_event(server: FakeMisp, uuid: str, info: str, timestamp: str) -> None:
+    server.add_event(
+        {
+            "uuid": uuid,
+            "info": info,
+            "timestamp": timestamp,
+            "Tag": [{"name": "sync:me"}],
+            "Attribute": [{"type": "domain", "value": "sync.example"}],
+        }
+    )
+
+
+def test_sync_cli_list_plan_and_run(
+    sync_config: tuple[Path, FakeMisp, FakeMisp], env: dict[str, str], tmp_path: Path
+) -> None:
+    config, left, right = sync_config
+    seed_sync_event(left, "44444444-0000-4000-8000-000000000004", "Left only", "100")
+    code, output = invoke(["sync", "list"], env, config)
+    eq(code, 0)
+    contains(output, "mirror")
+    contains(output, "newer-wins")
+    plan_file = tmp_path / "sync-plan.json"
+    code, output = invoke(["sync", "plan", "mirror", "--plan-output", str(plan_file)], env, config)
+    eq(code, 0)
+    ok(plan_file.exists())
+    not_contains(plan_file.read_text(encoding="utf-8"), API_KEY)
+    contains(output, "left -> right")
+    eq(right.events, {})
+    code, output = invoke(["sync", "run", "mirror", "--dry-run"], env, config)
+    eq(code, 0)
+    eq(right.events, {})
+    code, output = invoke(["--format", "json", "sync", "run", "mirror"], env, config)
+    eq(code, 0)
+    contains(right.events, "44444444-0000-4000-8000-000000000004")
+    code, output = invoke(["sync", "run", "mirror"], env, config)
+    eq(code, 0)
+    code, _ = invoke(["sync", "plan", "ghost"], env, config)
+    eq(code, 3)
+
+
+def test_sync_cli_conflicts_blocked_and_partial_failures(
+    sync_config: tuple[Path, FakeMisp, FakeMisp], env: dict[str, str]
+) -> None:
+    config, left, right = sync_config
+    seed_sync_event(left, "55555555-0000-4000-8000-000000000005", "Left version", "300")
+    seed_sync_event(right, "55555555-0000-4000-8000-000000000005", "Right version", "100")
+    seed_sync_event(right, "66666666-0000-4000-8000-000000000006", "Right only", "100")
+    code, output = invoke(["sync", "plan", "mirror"], env, config)
+    eq(code, 0)
+    contains(output, "conflict")
+    contains(output, "right -> left")
+    seed_sync_event(left, "77777777-0000-4000-8000-000000000007", "Rejected event", "100")
+    code, output = invoke(["sync", "run", "blocked", "--dry-run"], env, config)
+    eq(code, 8)
+    contains(output, "blocking errors")
+    code, output = invoke(["sync", "run", "blocked"], env, config)
+    eq(code, 6)
+    contains(output, "failed")
+
+
+def test_sync_cli_empty_job_list(env: dict[str, str], tmp_path: Path) -> None:
+    config = tmp_path / "no-jobs.yml"
+    config.write_text("version: 1\nservers: {}\n", encoding="utf-8")
+    code, output = invoke(["sync", "list"], env, config)
+    eq(code, 0)
+    contains(output, "no sync jobs configured")

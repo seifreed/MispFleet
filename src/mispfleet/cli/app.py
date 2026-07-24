@@ -17,6 +17,7 @@ from mispfleet.cli.commands import policy as policy_commands
 from mispfleet.cli.commands import search as search_commands
 from mispfleet.cli.commands import servers as server_commands
 from mispfleet.cli.commands import state as state_commands
+from mispfleet.cli.commands import sync as sync_commands
 from mispfleet.cli.commands.apply import apply_plan
 from mispfleet.cli.context import CLIState
 
@@ -90,6 +91,7 @@ app.add_typer(search_commands.app, name="search")
 app.add_typer(event_commands.app, name="event")
 app.add_typer(policy_commands.app, name="policy")
 app.add_typer(state_commands.app, name="state")
+app.add_typer(sync_commands.app, name="sync")
 app.add_typer(plugin_commands.app, name="plugins")
 app.command("apply")(apply_plan)
 

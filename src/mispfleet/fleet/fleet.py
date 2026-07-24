@@ -30,12 +30,14 @@ from mispfleet.models.result import (
     ServerHealth,
 )
 from mispfleet.models.server import ServerConfig
+from mispfleet.models.sync import SyncJobSpec, SyncPlan, SyncResult
 from mispfleet.policies.base import PolicySpec
 from mispfleet.policies.engine import PolicyEngine
 from mispfleet.services.copy import apply_copy_plan, build_copy_plan
 from mispfleet.services.diff import diff_events
 from mispfleet.services.health import check_server
 from mispfleet.services.search import build_search_result, collect_query_limit, normalize_match
+from mispfleet.services.sync import apply_sync, plan_sync
 from mispfleet.settings import FleetConfig, load_fleet_config
 from mispfleet.state.base import OperationRecord, StateBackend
 
@@ -47,12 +49,14 @@ class MispFleet:
         self,
         servers: dict[str, ServerConfig],
         policies: dict[str, PolicySpec] | None = None,
+        sync_jobs: dict[str, SyncJobSpec] | None = None,
         resolver: CredentialResolver | None = None,
         interactive: bool = True,
         state: StateBackend | None = None,
     ) -> None:
         self.registry = ServerRegistry(servers)
         self.policies = dict(policies or {})
+        self.sync_jobs = dict(sync_jobs or {})
         self.policy_engine = PolicyEngine(self.policies)
         self._resolver = resolver or default_resolver(interactive=interactive)
         self._executor = FleetExecutor()
@@ -84,6 +88,7 @@ class MispFleet:
         return cls(
             config.servers,
             policies=config.policies,
+            sync_jobs=config.sync_jobs,
             resolver=resolver,
             interactive=interactive,
             state=state,
@@ -228,6 +233,43 @@ class MispFleet:
             result="applied" if result.applied else "skipped",
             operation_id=result.operation_id,
         )
+        return result
+
+    async def plan_sync(self, job_name: str) -> SyncPlan:
+        """Build a reviewable plan for a configured synchronization job."""
+        job = self.sync_jobs.get(job_name)
+        if job is None:
+            raise InvalidConfigurationError(f"unknown sync job {job_name!r}")
+        self.registry.get(job.left)
+        self.registry.get(job.right)
+        return await plan_sync(
+            self.client(job.left),
+            self.client(job.right),
+            self.policy_engine,
+            job_name,
+            job,
+        )
+
+    async def apply_sync(self, plan: SyncPlan) -> SyncResult:
+        """Apply a synchronization plan, recording an audit trail."""
+        result = await apply_sync(
+            self.client(plan.left_server), self.client(plan.right_server), plan
+        )
+        if self._state is not None:
+            await self._state.save_operation(
+                OperationRecord(
+                    operation_id=uuid4(),
+                    kind="sync-apply",
+                    timestamp=datetime.now(tz=UTC),
+                    source_server=plan.left_server,
+                    destination_server=plan.right_server,
+                    event_identifier=None,
+                    plan_fingerprint=str(plan.plan_id),
+                    policy=None,
+                    result=f"{len(result.applied)} applied, {len(result.failures)} failed",
+                    error="; ".join(sorted(result.failures.values())) or None,
+                )
+            )
         return result
 
     async def _record_apply(

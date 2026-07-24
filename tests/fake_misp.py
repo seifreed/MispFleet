@@ -172,6 +172,24 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             self._reply(200, {"Event": event})
             return
+        if self.command == "POST" and self.path == "/events/index":
+            body_data = self._read_body()
+            wanted_tags = set(body_data.get("tag", []))
+            entries = []
+            for event in app.events.values():
+                names = {tag["name"] for tag in event.get("Tag", []) if "name" in tag}
+                if wanted_tags and not (wanted_tags & names):
+                    continue
+                entries.append(
+                    {
+                        "id": event.get("id"),
+                        "uuid": event.get("uuid"),
+                        "info": event.get("info"),
+                        "timestamp": event.get("timestamp"),
+                    }
+                )
+            self._reply(200, entries)
+            return
         if self.command == "POST" and self.path == "/attributes/restSearch":
             body_data = self._read_body()
             matches = app.search_attributes(body_data)
