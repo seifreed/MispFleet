@@ -48,6 +48,7 @@ class StateSettings(BaseModel):
     path: Path | None = None
     dsn: str | None = None
     password_env: str | None = None
+    capability_ttl_seconds: float = Field(default=3600.0, gt=0.0)
 
     @model_validator(mode="after")
     def _require_dsn_for_mariadb(self) -> StateSettings:

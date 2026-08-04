@@ -17,10 +17,12 @@ from mispfleet.cli.context import (
     run,
     state_of,
 )
+from mispfleet.exceptions import MispFleetError
 from mispfleet.fleet import MispFleet, ServerSelector
 from mispfleet.output.renderers import render_health, render_servers
 from mispfleet.output.serializers import jsonable
 from mispfleet.redaction import redact_mapping
+from mispfleet.state.base import CapabilityRecord
 
 app = typer.Typer(help="Inspect and probe configured servers.")
 templates_app = typer.Typer(help="Object template operations.")
@@ -104,17 +106,45 @@ def test(ctx: typer.Context, name: Annotated[str, typer.Argument()]) -> None:
     run(state, inner())
 
 
+async def _capability_records(
+    state: CLIState, refresh: bool
+) -> tuple[dict[str, CapabilityRecord | None], bool]:
+    """Fetch (or read from cache) capability records for the selected servers."""
+    ttl = state.load_config().state.capability_ttl_seconds
+    backend = state.state_backend()
+    await backend.initialize()
+    records: dict[str, CapabilityRecord | None] = {}
+    partial = False
+    try:
+        async with state.build_fleet(state_backend=backend) as fleet:
+            for name in fleet.select(state.selector()):
+                try:
+                    records[name] = await fleet.server_capabilities(
+                        name, refresh=refresh, ttl_seconds=ttl
+                    )
+                except MispFleetError:
+                    records[name] = None
+                    partial = True
+    finally:
+        await backend.close()
+    return records, partial
+
+
+RefreshOption = Annotated[
+    bool, typer.Option("--refresh", help="Ignore the cache and probe the servers.")
+]
+
+
 @app.command()
-def versions(ctx: typer.Context) -> None:
+def versions(ctx: typer.Context, refresh: RefreshOption = False) -> None:
     """Show MISP versions across the selected servers."""
     state = state_of(ctx)
 
     async def inner() -> int:
-        async with state.build_fleet() as fleet:
-            result = await fleet.health(state.selector())
+        records, partial = await _capability_records(state, refresh)
         rows = {
-            name: (result.results[name].misp_version if name in result.results else None)
-            for name in result.requested_servers
+            name: record.misp_version if record is not None else None
+            for name, record in records.items()
         }
 
         def render(console: Console) -> None:
@@ -122,22 +152,21 @@ def versions(ctx: typer.Context) -> None:
                 console.print(f"{name}: {version or 'unavailable'}")
 
         state.emit("servers-versions", {"versions": rows}, render=render)
-        return EXIT_PARTIAL if result.partial else EXIT_SUCCESS
+        return EXIT_PARTIAL if partial else EXIT_SUCCESS
 
     run(state, inner())
 
 
 @app.command()
-def capabilities(ctx: typer.Context) -> None:
+def capabilities(ctx: typer.Context, refresh: RefreshOption = False) -> None:
     """Show discovered capabilities across the selected servers."""
     state = state_of(ctx)
 
     async def inner() -> int:
-        async with state.build_fleet() as fleet:
-            result = await fleet.health(state.selector())
+        records, partial = await _capability_records(state, refresh)
         rows = {
-            name: sorted(result.results[name].capabilities) if name in result.results else []
-            for name in result.requested_servers
+            name: sorted(record.capabilities) if record is not None else []
+            for name, record in records.items()
         }
 
         def render(console: Console) -> None:
@@ -145,7 +174,7 @@ def capabilities(ctx: typer.Context) -> None:
                 console.print(f"{name}: {','.join(items) or 'unavailable'}")
 
         state.emit("servers-capabilities", {"capabilities": rows}, render=render)
-        return EXIT_PARTIAL if result.partial else EXIT_SUCCESS
+        return EXIT_PARTIAL if partial else EXIT_SUCCESS
 
     run(state, inner())
 

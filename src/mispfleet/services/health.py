@@ -6,6 +6,7 @@ import asyncio
 
 from mispfleet.client import MispClient
 from mispfleet.client.capabilities import capabilities_from_version
+from mispfleet.client.tlsinfo import peer_certificate_expiry
 from mispfleet.exceptions import (
     APIError,
     AuthenticationError,
@@ -57,6 +58,7 @@ async def check_server(client: MispClient) -> ServerHealth:
         misp_version=str(version.get("version")) if version.get("version") else None,
         api_version=str(version.get("pymisp_recommended_version") or "") or None,
         tls_valid=True if client.config.url.scheme == "https" else None,
+        certificate_expiry=await peer_certificate_expiry(client.config),
         capabilities=capabilities_from_version(version),
         warnings=warnings,
     )

@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 from mispfleet.exceptions import StateError
-from mispfleet.state.base import Checkpoint, OperationRecord
+from mispfleet.state.base import CapabilityRecord, Checkpoint, OperationRecord
 
 _SCHEMA = (
     "CREATE TABLE IF NOT EXISTS checkpoints ("
@@ -28,6 +28,10 @@ _SCHEMA = (
     "CREATE TABLE IF NOT EXISTS operations ("
     " operation_id VARCHAR(36) PRIMARY KEY,"
     " timestamp VARCHAR(40) NOT NULL,"
+    " payload MEDIUMTEXT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS capabilities ("
+    " server VARCHAR(255) PRIMARY KEY,"
+    " fetched_at VARCHAR(40) NOT NULL,"
     " payload MEDIUMTEXT NOT NULL)",
 )
 
@@ -173,6 +177,29 @@ class MariaDBStateBackend:
         """All stored operation records, newest first."""
         rows = await self._fetch_column("SELECT payload FROM operations ORDER BY timestamp DESC")
         return [OperationRecord.model_validate_json(row) for row in rows]
+
+    async def save_capabilities(self, record: CapabilityRecord) -> None:
+        """Insert or update the cached capabilities for one server."""
+        fetched = record.fetched_at.isoformat()
+        payload = record.model_dump_json()
+        await self._execute(
+            "INSERT INTO capabilities (server, fetched_at, payload) VALUES (%s, %s, %s)"
+            " ON DUPLICATE KEY UPDATE fetched_at = %s, payload = %s",
+            (record.server, fetched, payload, fetched, payload),
+        )
+
+    async def load_capabilities(self, server: str) -> CapabilityRecord | None:
+        """Return the cached capabilities for one server, if any."""
+        rows = await self._fetch_column(
+            "SELECT payload FROM capabilities WHERE server = %s", (server,)
+        )
+        if not rows:
+            return None
+        return CapabilityRecord.model_validate_json(rows[0])
+
+    async def invalidate_capabilities(self, server: str) -> None:
+        """Drop the cached capabilities for one server."""
+        await self._execute("DELETE FROM capabilities WHERE server = %s", (server,))
 
     async def prune(self, older_than: datetime) -> int:
         """Delete records older than the given instant; returns removals."""

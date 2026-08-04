@@ -8,8 +8,8 @@ from uuid import uuid4
 import pytest
 
 from mispfleet.exceptions import StateError
-from mispfleet.state.base import Checkpoint, OperationRecord, StateBackend
-from tests.support import eq
+from mispfleet.state.base import CapabilityRecord, Checkpoint, OperationRecord, StateBackend
+from tests.support import eq, ok
 
 
 def checkpoint(age_minutes: int = 0, page: int = 3) -> Checkpoint:
@@ -84,4 +84,34 @@ async def exercise_backend(backend: StateBackend) -> None:
     eq(removed, 1)
     remaining = await backend.list_operations()
     eq([o.operation_id for o in remaining], [new_operation.operation_id])
+    await exercise_capability_cache(backend)
     await backend.close()
+
+
+async def exercise_capability_cache(backend: StateBackend) -> None:
+    """Run the capability-cache lifecycle against a live backend."""
+    now = datetime.now(tz=UTC)
+    eq(await backend.load_capabilities("production"), None)
+    record = CapabilityRecord(
+        server="production",
+        misp_version="2.4.190",
+        capabilities={"rest-search", "events"},
+        fetched_at=now,
+        expires_at=now + timedelta(hours=1),
+    )
+    await backend.save_capabilities(record)
+    loaded = await backend.load_capabilities("production")
+    ok(loaded is not None)
+    if loaded is None:
+        return
+    eq(loaded.misp_version, "2.4.190")
+    eq(loaded.capabilities, {"rest-search", "events"})
+    ok(not loaded.expired(now))
+    ok(loaded.expired(now + timedelta(hours=2)))
+    refreshed = record.model_copy(update={"misp_version": "2.5.0"})
+    await backend.save_capabilities(refreshed)
+    reloaded = await backend.load_capabilities("production")
+    eq(reloaded.misp_version if reloaded else None, "2.5.0")
+    await backend.invalidate_capabilities("production")
+    await backend.invalidate_capabilities("production")
+    eq(await backend.load_capabilities("production"), None)

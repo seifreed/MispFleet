@@ -6,7 +6,7 @@ from datetime import datetime
 from uuid import UUID
 
 from mispfleet.exceptions import StateError
-from mispfleet.state.base import Checkpoint, OperationRecord
+from mispfleet.state.base import CapabilityRecord, Checkpoint, OperationRecord
 
 
 class MemoryStateBackend:
@@ -15,6 +15,7 @@ class MemoryStateBackend:
     def __init__(self) -> None:
         self._checkpoints: dict[UUID, Checkpoint] = {}
         self._operations: list[OperationRecord] = []
+        self._capabilities: dict[str, CapabilityRecord] = {}
 
     @property
     def location(self) -> str:
@@ -50,6 +51,18 @@ class MemoryStateBackend:
     async def list_operations(self) -> list[OperationRecord]:
         """All stored operation records, newest first."""
         return sorted(self._operations, key=lambda o: o.timestamp, reverse=True)
+
+    async def save_capabilities(self, record: CapabilityRecord) -> None:
+        """Insert or update the cached capabilities for one server."""
+        self._capabilities[record.server] = record
+
+    async def load_capabilities(self, server: str) -> CapabilityRecord | None:
+        """Return the cached capabilities for one server, if any."""
+        return self._capabilities.get(server)
+
+    async def invalidate_capabilities(self, server: str) -> None:
+        """Drop the cached capabilities for one server."""
+        self._capabilities.pop(server, None)
 
     async def prune(self, older_than: datetime) -> int:
         """Delete records older than the given instant; returns removals."""

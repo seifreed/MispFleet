@@ -209,9 +209,14 @@ def test_servers_commands(
     code, output = invoke(["servers", "versions", "--all"], env, config)
     eq(code, 0)
     contains(output, "2.4.190")
+    version_calls = len([s for s in _research.requests_seen if "getVersion" in s[1]])
     code, output = invoke(["--format", "yaml", "servers", "capabilities", "--all"], env, config)
     eq(code, 0)
     contains(output, "rest-search")
+    eq(len([s for s in _research.requests_seen if "getVersion" in s[1]]), version_calls)
+    code, output = invoke(["servers", "capabilities", "--all", "--refresh"], env, config)
+    eq(code, 0)
+    eq(len([s for s in _research.requests_seen if "getVersion" in s[1]]), version_calls + 1)
     code, output = invoke(
         ["servers", "templates", "diff", "--left", "research", "--right", "production"],
         env,

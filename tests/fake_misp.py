@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import json
 import re
+import ssl
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any, cast
 
 API_KEY = "test-api-key"
@@ -32,7 +34,8 @@ _LIST_ROUTES = {
 class FakeMisp:
     """In-memory MISP-like application state, one instance per test."""
 
-    def __init__(self) -> None:
+    def __init__(self, certfile: Path | None = None, keyfile: Path | None = None) -> None:
+        self.tls = certfile is not None
         self.events: dict[str, dict[str, Any]] = {}
         self.attributes: list[dict[str, Any]] = []
         self.templates: list[dict[str, Any]] = []
@@ -45,6 +48,10 @@ class FakeMisp:
         self.search_bodies: list[dict[str, Any]] = []
         self._server = _Server(("127.0.0.1", 0), _Handler)
         self._server.app = self
+        if certfile is not None:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(str(certfile), str(keyfile) if keyfile else None)
+            self._server.socket = context.wrap_socket(self._server.socket, server_side=True)
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
 
     def start(self) -> None:
@@ -67,7 +74,8 @@ class FakeMisp:
     @property
     def url(self) -> str:
         """Base URL of the server."""
-        return f"http://127.0.0.1:{self.port}"
+        scheme = "https" if self.tls else "http"
+        return f"{scheme}://127.0.0.1:{self.port}"
 
     def script(self, status: int, body: str = "", headers: dict[str, str] | None = None) -> None:
         """Queue a canned response returned before normal routing."""

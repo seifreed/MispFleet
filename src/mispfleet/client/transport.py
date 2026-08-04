@@ -48,7 +48,7 @@ def _is_tls_failure(error: httpx.ConnectError) -> bool:
     return False
 
 
-def _build_verify(config: ServerConfig) -> ssl.SSLContext | bool:
+def build_verify(config: ServerConfig) -> ssl.SSLContext | bool:
     """Build the TLS configuration: custom CA bundle and mutual TLS support."""
     if config.ca_bundle is None and config.client_certificate is None:
         return config.verify_tls
@@ -91,7 +91,7 @@ class AsyncTransport:
                 "Accept": "application/json",
                 "User-Agent": "mispfleet",
             },
-            verify=_build_verify(config),
+            verify=build_verify(config),
             proxy=config.proxy,
             timeout=httpx.Timeout(config.request_timeout, connect=config.connect_timeout),
             limits=httpx.Limits(max_connections=config.concurrency),

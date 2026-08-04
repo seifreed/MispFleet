@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import TracebackType
 from typing import Any
 from uuid import UUID, uuid4
 
 from mispfleet.client import MispClient
+from mispfleet.client.capabilities import capabilities_from_version
 from mispfleet.client.pagination import paginate
 from mispfleet.credentials import CredentialResolver
 from mispfleet.credentials.base import default_resolver
@@ -40,7 +41,7 @@ from mispfleet.services.health import check_server
 from mispfleet.services.search import build_search_result, collect_query_limit, normalize_match
 from mispfleet.services.sync import apply_sync, plan_sync
 from mispfleet.settings import FleetConfig, load_fleet_config
-from mispfleet.state.base import OperationRecord, StateBackend
+from mispfleet.state.base import CapabilityRecord, OperationRecord, StateBackend
 
 
 class MispFleet:
@@ -173,6 +174,31 @@ class MispFleet:
 
         envelope = await self._executor.run(self.select(selector), per_server, execution)
         return FleetHealthResult(**envelope.model_dump())
+
+    async def server_capabilities(
+        self,
+        name: str,
+        refresh: bool = False,
+        ttl_seconds: float = 3600.0,
+    ) -> CapabilityRecord:
+        """Discover one server's capabilities, using the state cache when valid."""
+        self.registry.get(name)
+        now = datetime.now(tz=UTC)
+        if self._state is not None and not refresh:
+            cached = await self._state.load_capabilities(name)
+            if cached is not None and not cached.expired(now):
+                return cached
+        version = await self.client(name).system.version()
+        record = CapabilityRecord(
+            server=name,
+            misp_version=str(version.get("version")) if version.get("version") else None,
+            capabilities=capabilities_from_version(version),
+            fetched_at=now,
+            expires_at=now + timedelta(seconds=ttl_seconds),
+        )
+        if self._state is not None:
+            await self._state.save_capabilities(record)
+        return record
 
     async def get_event(
         self,

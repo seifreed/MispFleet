@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Checkpoint(BaseModel):
@@ -23,6 +23,20 @@ class Checkpoint(BaseModel):
     updated_at: datetime
     client_version: str
     server_version: str | None = None
+
+
+class CapabilityRecord(BaseModel):
+    """Cached capability and version discovery result for one server."""
+
+    server: str
+    misp_version: str | None = None
+    capabilities: set[str] = Field(default_factory=set)
+    fetched_at: datetime
+    expires_at: datetime | None = None
+
+    def expired(self, now: datetime) -> bool:
+        """Whether the cache entry is past its expiry instant."""
+        return self.expires_at is not None and now >= self.expires_at
 
 
 class OperationRecord(BaseModel):
@@ -71,6 +85,18 @@ class StateBackend(Protocol):
 
     async def save_operation(self, operation: OperationRecord) -> None:
         """Append an operation audit record."""
+        ...
+
+    async def save_capabilities(self, record: CapabilityRecord) -> None:
+        """Insert or update the cached capabilities for one server."""
+        ...
+
+    async def load_capabilities(self, server: str) -> CapabilityRecord | None:
+        """Return the cached capabilities for one server, if any."""
+        ...
+
+    async def invalidate_capabilities(self, server: str) -> None:
+        """Drop the cached capabilities for one server."""
         ...
 
     async def list_operations(self) -> list[OperationRecord]:

@@ -13,7 +13,7 @@ from uuid import UUID
 import aiosqlite
 
 from mispfleet.exceptions import StateError
-from mispfleet.state.base import Checkpoint, OperationRecord
+from mispfleet.state.base import CapabilityRecord, Checkpoint, OperationRecord
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS checkpoints (
@@ -24,6 +24,11 @@ CREATE TABLE IF NOT EXISTS checkpoints (
 CREATE TABLE IF NOT EXISTS operations (
     operation_id TEXT PRIMARY KEY,
     timestamp TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS capabilities (
+    server TEXT PRIMARY KEY,
+    fetched_at TEXT NOT NULL,
     payload TEXT NOT NULL
 );
 """
@@ -120,6 +125,32 @@ class SqliteStateBackend:
         )
         rows = await cursor.fetchall()
         return [OperationRecord.model_validate_json(str(row[0])) for row in rows]
+
+    async def save_capabilities(self, record: CapabilityRecord) -> None:
+        """Insert or update the cached capabilities for one server."""
+        payload = record.model_dump_json()
+        fetched = record.fetched_at.isoformat()
+        await self._conn().execute(
+            "INSERT INTO capabilities (server, fetched_at, payload) VALUES (?, ?, ?) "
+            "ON CONFLICT(server) DO UPDATE SET fetched_at = ?, payload = ?",
+            (record.server, fetched, payload, fetched, payload),
+        )
+        await self._conn().commit()
+
+    async def load_capabilities(self, server: str) -> CapabilityRecord | None:
+        """Return the cached capabilities for one server, if any."""
+        cursor = await self._conn().execute(
+            "SELECT payload FROM capabilities WHERE server = ?", (server,)
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return CapabilityRecord.model_validate_json(str(row[0]))
+
+    async def invalidate_capabilities(self, server: str) -> None:
+        """Drop the cached capabilities for one server."""
+        await self._conn().execute("DELETE FROM capabilities WHERE server = ?", (server,))
+        await self._conn().commit()
 
     async def prune(self, older_than: datetime) -> int:
         """Delete records older than the given instant; returns removals."""
