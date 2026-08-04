@@ -1,0 +1,6 @@
+[
+  "--- research/9c5c1c2e-0000-4000-8000-00000000000e",
+  "+++ production/9c5c1c2e-0000-4000-8000-00000000000e",
+  "~ info: 'Campaign X' -> 'Campaign X (edited)'",
+  "@@ added=0 removed=0 changed=1 conflicts=0"
+]

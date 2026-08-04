@@ -1,0 +1,40 @@
+name: mispfleet-contract
+
+# Brings up one real MISP release for contract testing. Select the version
+# with MISP_IMAGE_TAG, then point the tests at it:
+#
+#   MISP_IMAGE_TAG=core-v2.5.0 docker compose -f tests/contract/docker-compose.yml up -d
+#   MISPFLEET_CONTRACT_URL=https://localhost:8443 \
+#   MISPFLEET_CONTRACT_KEY=<automation key> \
+#     pytest tests/contract -q
+#
+# See docs/compatibility.md for the supported version matrix.
+
+services:
+  misp:
+    image: ghcr.io/misp/misp-docker/misp-core:${MISP_IMAGE_TAG:-latest}
+    environment:
+      BASE_URL: https://localhost:8443
+      ADMIN_EMAIL: admin@admin.test
+      ADMIN_KEY: ${MISPFLEET_CONTRACT_KEY:?set MISPFLEET_CONTRACT_KEY}
+      MYSQL_HOST: db
+      MYSQL_USER: misp
+      MYSQL_PASSWORD: ${MISP_DB_PASSWORD:-misp}
+      MYSQL_DATABASE: misp
+    ports:
+      - "8443:443"
+    depends_on:
+      - db
+    healthcheck:
+      test: ["CMD", "curl", "-sfk", "https://localhost/users/login"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  db:
+    image: mariadb:11.4
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_USER: misp
+      MYSQL_PASSWORD: ${MISP_DB_PASSWORD:-misp}
+      MYSQL_DATABASE: misp

@@ -1,0 +1,23 @@
+{
+  "analysis": "1",
+  "deleted": true,
+  "distribution": "1",
+  "enforceWarninglist": true,
+  "metadata": true,
+  "object_name": "file",
+  "org": [
+    "CIRCL"
+  ],
+  "published": true,
+  "returnFormat": "json",
+  "tags": [
+    "tlp:green",
+    "!tlp:red"
+  ],
+  "threat_level_id": "2",
+  "type": [
+    "domain",
+    "ip-dst"
+  ],
+  "value": "evil.example"
+}

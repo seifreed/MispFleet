@@ -96,6 +96,10 @@ init_typed = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "--cov=mispfleet --cov-report=term-missing --cov-fail-under=100"
+markers = [
+    "contract: runs against a live MISP release (needs MISPFLEET_CONTRACT_URL)",
+    "performance: checks the performance targets of the build contract",
+]
 
 [tool.coverage.run]
 branch = true

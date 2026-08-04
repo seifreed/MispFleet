@@ -1,0 +1,45 @@
+name: Contract tests
+
+# Runs the contract suite against real MISP releases. Manual only: it starts
+# containers and takes several minutes. See docs/compatibility.md for the
+# supported version matrix.
+
+on:
+  workflow_dispatch:
+    inputs:
+      misp_image_tag:
+        description: MISP core image tag to test against
+        required: true
+        default: latest
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install (locked dependencies)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.lock
+          python -m pip install -e . --no-deps
+      - name: Start MISP
+        env:
+          MISP_IMAGE_TAG: ${{ inputs.misp_image_tag }}
+          MISPFLEET_CONTRACT_KEY: ${{ secrets.MISPFLEET_CONTRACT_KEY }}
+        run: |
+          docker compose -f tests/contract/docker-compose.yml up -d
+          timeout 600 bash -c 'until curl -sfk https://localhost:8443/users/login; do sleep 10; done'
+      - name: Run contract tests
+        env:
+          MISPFLEET_CONTRACT_URL: https://localhost:8443
+          MISPFLEET_CONTRACT_KEY: ${{ secrets.MISPFLEET_CONTRACT_KEY }}
+        run: pytest tests/contract -q --no-cov -p no:cacheprovider
+      - name: Stop MISP
+        if: always()
+        run: docker compose -f tests/contract/docker-compose.yml down -v
