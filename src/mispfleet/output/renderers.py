@@ -5,7 +5,7 @@ from __future__ import annotations
 from rich.console import Console
 from rich.table import Table
 
-from mispfleet.models.diff import EventDiff
+from mispfleet.models.diff import DiffOperation, EventDiff
 from mispfleet.models.plan import ApplyResult, CopyPlan
 from mispfleet.models.result import FederatedSearchResult, FleetHealthResult
 from mispfleet.models.server import ServerConfig
@@ -115,6 +115,33 @@ def render_diff(console: Console, diff: EventDiff) -> None:
         f"added={summary.added} removed={summary.removed} "
         f"changed={summary.changed} conflicts={summary.conflicts}"
     )
+
+
+_PATCH_SYMBOLS = {
+    DiffOperation.ADD: "+",
+    DiffOperation.REMOVE: "-",
+    DiffOperation.CHANGE: "~",
+    DiffOperation.CONFLICT: "!",
+}
+
+
+def patch_from_diff(diff: EventDiff) -> str:
+    """Render an event diff as a deterministic patch-style text document."""
+    lines = [
+        f"--- {diff.left_server}/{diff.event_identifier}",
+        f"+++ {diff.right_server}/{diff.event_identifier}",
+    ]
+    for difference in diff.differences:
+        line = f"{_PATCH_SYMBOLS[difference.operation]} {difference.path}"
+        if difference.left is not None or difference.right is not None:
+            line += f": {difference.left!r} -> {difference.right!r}"
+        lines.append(line)
+    summary = diff.summary
+    lines.append(
+        f"@@ added={summary.added} removed={summary.removed} "
+        f"changed={summary.changed} conflicts={summary.conflicts}"
+    )
+    return "\n".join(lines) + "\n"
 
 
 def render_plan(console: Console, plan: CopyPlan) -> None:

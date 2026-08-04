@@ -389,6 +389,26 @@ def test_event_get_find_diff_export_validate(
     eq(code, 0)
     contains(output, "change")
     code, output = invoke(
+        [
+            "--format",
+            "patch",
+            "event",
+            "diff",
+            EVENT_UUID,
+            "--left",
+            "research",
+            "--right",
+            "production",
+        ],
+        env,
+        config,
+    )
+    eq(code, 0)
+    contains(output, f"--- research/{EVENT_UUID}")
+    contains(output, "~ info:")
+    code, _ = invoke(["--format", "patch", "servers", "list"], env, config)
+    eq(code, 2)
+    code, output = invoke(
         ["--format", "yaml", "event", "export", EVENT_UUID, "--server", "research"], env, config
     )
     eq(code, 0)

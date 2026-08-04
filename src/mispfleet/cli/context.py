@@ -187,13 +187,18 @@ class CLIState:
         payload: Any,
         render: Callable[[Console], None] | None = None,
         jsonl_records: list[Any] | None = None,
+        patch_text: Callable[[], str] | None = None,
         **extra: Any,
     ) -> None:
         """Emit machine output to stdout/file, or human output to the console."""
         if self.output_format == "table" and render is not None:
             render(self.console())
             return
-        if self.output_format == "jsonl" and jsonl_records is not None:
+        if self.output_format == "patch":
+            if patch_text is None:
+                raise typer.BadParameter("--format patch is only supported by 'event diff'")
+            text = patch_text()
+        elif self.output_format == "jsonl" and jsonl_records is not None:
             text = serialize(jsonl_records, "jsonl")
         elif self.output_format == "yaml":
             text = serialize(document(operation, payload, **extra), "yaml")
@@ -236,4 +241,4 @@ def run(state: CLIState, coroutine: Coroutine[Any, Any, int]) -> None:
         raise typer.Exit(code)
 
 
-OutputFormatOption = Literal["table", "json", "jsonl", "yaml"]
+OutputFormatOption = Literal["table", "json", "jsonl", "yaml", "patch"]

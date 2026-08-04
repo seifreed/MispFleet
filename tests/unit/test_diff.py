@@ -5,11 +5,12 @@ from __future__ import annotations
 from hypothesis import given
 from hypothesis import strategies as st
 
-from mispfleet.models.attribute import MISPAttribute, MISPObject
+from mispfleet.models.attribute import MISPAttribute, MISPObject, ObjectReference
 from mispfleet.models.diff import DiffOperation
-from mispfleet.models.event import MISPEvent
+from mispfleet.models.event import Galaxy, MISPEvent, Proposal, Sighting
+from mispfleet.output.renderers import patch_from_diff
 from mispfleet.services.diff import diff_events
-from tests.support import eq, ok
+from tests.support import contains, eq, ok
 
 UUID_A = "9c5c1c2e-0000-4000-8000-00000000000e"
 
@@ -114,6 +115,64 @@ def test_object_add_remove_and_nested_conflicts() -> None:
         {d.path: d.operation for d in removed.differences}["objects[network]"],
         DiffOperation.REMOVE,
     )
+
+
+def test_objects_with_same_name_are_keyed_by_uuid() -> None:
+    left = event(
+        objects=[
+            MISPObject(uuid="obj-1", name="file", attributes=[]),
+            MISPObject(uuid="obj-2", name="file", attributes=[]),
+        ]
+    )
+    right = event(objects=[MISPObject(uuid="obj-1", name="file", attributes=[])])
+    diff = diff_events(UUID_A, "left", "right", left, right)
+    eq({d.path: d.operation for d in diff.differences}, {"objects[obj-2]": DiffOperation.REMOVE})
+
+
+def test_object_reference_differences_are_reported() -> None:
+    reference = ObjectReference(referenced_uuid="attr-1", relationship_type="related-to")
+    left = event(objects=[MISPObject(uuid="obj-1", name="file", references=[reference])])
+    right = event(objects=[MISPObject(uuid="obj-1", name="file")])
+    diff = diff_events(UUID_A, "left", "right", left, right)
+    eq(
+        {d.path: d.operation for d in diff.differences},
+        {"objects[obj-1].references[attr-1|related-to]": DiffOperation.REMOVE},
+    )
+
+
+def test_galaxy_sighting_and_proposal_differences() -> None:
+    left = event(
+        galaxies=[Galaxy(name="Threat Actor", clusters={"APT-X"})],
+        sightings=[Sighting(attribute_uuid="a-1", date_sighting="1700000000")],
+        proposals=[Proposal(type="domain", value="old.example")],
+    )
+    right = event(
+        galaxies=[Galaxy(name="Threat Actor", clusters={"APT-Y"})],
+        sightings=[],
+        proposals=[Proposal(type="domain", value="new.example")],
+    )
+    diff = diff_events(UUID_A, "left", "right", left, right)
+    operations = {d.path: d.operation for d in diff.differences}
+    eq(operations["galaxies[Threat Actor/APT-Y]"], DiffOperation.ADD)
+    eq(operations["galaxies[Threat Actor/APT-X]"], DiffOperation.REMOVE)
+    eq(operations["sightings[a-1|0|1700000000]"], DiffOperation.REMOVE)
+    eq(operations["proposals[domain|new.example]"], DiffOperation.ADD)
+    eq(operations["proposals[domain|old.example]"], DiffOperation.REMOVE)
+
+
+def test_patch_from_diff_renders_all_operations() -> None:
+    left = event(tags={"old"}, info="Campaign")
+    right = event(tags={"new"}, info="Renamed")
+    diff = diff_events(UUID_A, "left", "right", left, right)
+    text = patch_from_diff(diff)
+    contains(text, f"--- left/{UUID_A}")
+    contains(text, f"+++ right/{UUID_A}")
+    contains(text, "+ tags[new]")
+    contains(text, "- tags[old]")
+    contains(text, "~ info: 'Campaign' -> 'Renamed'")
+    contains(text, "@@ added=1 removed=1 changed=1 conflicts=0")
+    empty = diff_events(UUID_A, "left", "right", event(), event())
+    contains(patch_from_diff(empty), "@@ added=0 removed=0 changed=0 conflicts=0")
 
 
 @given(

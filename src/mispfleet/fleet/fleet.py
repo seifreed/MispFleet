@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -195,8 +196,10 @@ class MispFleet:
         """Fetch one event from two servers and compare normalized content."""
         self.registry.get(left)
         self.registry.get(right)
-        left_event = await self.client(left).events.get(str(event_id))
-        right_event = await self.client(right).events.get(str(event_id))
+        left_event, right_event = await asyncio.gather(
+            self.client(left).events.get(str(event_id)),
+            self.client(right).events.get(str(event_id)),
+        )
         return diff_events(str(event_id), left, right, left_event, right_event)
 
     async def plan_copy(

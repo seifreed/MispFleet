@@ -23,7 +23,12 @@ from mispfleet.cli.context import (
 from mispfleet.fleet import ServerSelector
 from mispfleet.models.event import MISPEvent
 from mispfleet.models.plan import ConflictAction, CopyPlan
-from mispfleet.output.renderers import render_apply_result, render_diff, render_plan
+from mispfleet.output.renderers import (
+    patch_from_diff,
+    render_apply_result,
+    render_diff,
+    render_plan,
+)
 from mispfleet.output.serializers import document, serialize
 
 app = typer.Typer(help="Work with events across the fleet.")
@@ -100,6 +105,7 @@ def diff(
             "event-diff",
             result,
             render=lambda console: render_diff(console, result),
+            patch_text=lambda: patch_from_diff(result),
         )
         return EXIT_SUCCESS
 

@@ -131,7 +131,11 @@ def main_callback(
     ] = None,
     output_format: Annotated[
         str,
-        typer.Option("--format", envvar="MISPFLEET_OUTPUT", help="table, json, jsonl or yaml."),
+        typer.Option(
+            "--format",
+            envvar="MISPFLEET_OUTPUT",
+            help="table, json, jsonl, yaml or patch (event diff only).",
+        ),
     ] = "table",
     output: Annotated[Path | None, typer.Option(help="Write machine output to a file.")] = None,
     log_level: Annotated[
@@ -159,7 +163,7 @@ def main_callback(
     ] = False,
 ) -> None:
     """Collect global options shared by every command."""
-    if output_format not in ("table", "json", "jsonl", "yaml"):
+    if output_format not in ("table", "json", "jsonl", "yaml", "patch"):
         raise typer.BadParameter(f"unsupported format {output_format!r}")
     state = CLIState(
         config_path=config,
