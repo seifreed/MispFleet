@@ -42,6 +42,7 @@ class FakeMisp:
         self.static_search: bool = False
         self.close_next: bool = False
         self.requests_seen: list[tuple[str, str]] = []
+        self.search_bodies: list[dict[str, Any]] = []
         self._server = _Server(("127.0.0.1", 0), _Handler)
         self._server.app = self
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
@@ -88,6 +89,7 @@ class FakeMisp:
 
     def search_attributes(self, body: dict[str, Any]) -> list[dict[str, Any]]:
         """Filter registered attributes like a very small restSearch."""
+        self.search_bodies.append(body)
         matches = self.attributes
         value = body.get("value")
         if value is not None:
@@ -96,6 +98,12 @@ class FakeMisp:
         types = body.get("type")
         if types is not None:
             matches = [item for item in matches if item.get("type") in types]
+        orgs = body.get("org")
+        if orgs is not None:
+            matches = [item for item in matches if item.get("org") in orgs]
+        object_name = body.get("object_name")
+        if object_name is not None:
+            matches = [item for item in matches if item.get("object_name") == object_name]
         if self.static_search:
             return matches[: int(body.get("limit", 10))]
         page = int(body.get("page", 1))

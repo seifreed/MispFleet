@@ -311,6 +311,62 @@ def test_search_events_attributes_and_jsonl_output(
     eq(code, 2)
 
 
+def test_search_extended_filters_reach_server(
+    cli_servers: tuple[Path, FakeMisp, FakeMisp], env: dict[str, str]
+) -> None:
+    config, research, _production = cli_servers
+    seed(research)
+    research.attributes[0]["org"] = "CIRCL"
+    research.attributes[0]["object_name"] = "file"
+    code, _ = invoke(
+        [
+            "--server",
+            "research",
+            "search",
+            "attributes",
+            "--org",
+            "CIRCL",
+            "--object-name",
+            "file",
+            "--distribution",
+            "1",
+            "--timestamp-since",
+            "30d",
+            "--timestamp-until",
+            "1d",
+        ],
+        env,
+        config,
+    )
+    eq(code, 0)
+    body = research.search_bodies[-1]
+    eq(body["org"], ["CIRCL"])
+    eq(body["object_name"], "file")
+    eq(body["distribution"], "1")
+    eq(len(body["timestamp"]), 2)
+    code, _ = invoke(
+        [
+            "--server",
+            "research",
+            "search",
+            "events",
+            "--info",
+            "Campaign",
+            "--org",
+            "CIRCL",
+            "--threat-level",
+            "2",
+            "--analysis",
+            "1",
+            "--distribution",
+            "1",
+        ],
+        env,
+        config,
+    )
+    eq(code, 0)
+
+
 def test_event_get_find_diff_export_validate(
     cli_servers: tuple[Path, FakeMisp, FakeMisp], env: dict[str, str], tmp_path: Path
 ) -> None:

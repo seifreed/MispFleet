@@ -61,12 +61,20 @@ def events(
     info: Annotated[str | None, typer.Option(help="Event info substring.")] = None,
     since: Annotated[str | None, typer.Option(help="Relative window, e.g. 30d.")] = None,
     tag: Annotated[list[str] | None, typer.Option(help="Require this event tag.")] = None,
+    org: Annotated[list[str] | None, typer.Option(help="Creator organisation filter.")] = None,
+    threat_level: Annotated[str | None, typer.Option(help="Threat level filter.")] = None,
+    analysis: Annotated[str | None, typer.Option(help="Analysis level filter.")] = None,
+    distribution: Annotated[str | None, typer.Option(help="Distribution level filter.")] = None,
 ) -> None:
     """Search events by metadata across the fleet."""
     state = state_of(ctx)
     query = SearchQuery(
         event_info=info,
         tags=set(tag or []),
+        organisations=set(org or []),
+        threat_level=threat_level,
+        analysis=analysis,
+        distribution=distribution,
         date_from=since_to_datetime(since) if since else None,
         metadata_only=True,
     )
@@ -82,13 +90,27 @@ def attributes(
     tag: Annotated[list[str] | None, typer.Option(help="Require this tag.")] = None,
     since: Annotated[str | None, typer.Option(help="Relative window, e.g. 7d.")] = None,
     limit: Annotated[int | None, typer.Option(help="Maximum records per server.")] = None,
+    org: Annotated[list[str] | None, typer.Option(help="Creator organisation filter.")] = None,
+    object_name: Annotated[str | None, typer.Option(help="MISP object name filter.")] = None,
+    distribution: Annotated[str | None, typer.Option(help="Distribution level filter.")] = None,
+    timestamp_since: Annotated[
+        str | None, typer.Option(help="Modified within this relative window, e.g. 7d.")
+    ] = None,
+    timestamp_until: Annotated[
+        str | None, typer.Option(help="Modified before this relative window, e.g. 1d.")
+    ] = None,
 ) -> None:
     """Search attributes by type, tag and date across the fleet."""
     state = state_of(ctx)
     query = SearchQuery(
         attribute_types=set(attribute_type or []),
         tags=set(tag or []),
+        organisations=set(org or []),
+        object_name=object_name,
+        distribution=distribution,
         date_from=since_to_datetime(since) if since else None,
+        timestamp_from=since_to_datetime(timestamp_since) if timestamp_since else None,
+        timestamp_to=since_to_datetime(timestamp_until) if timestamp_until else None,
         limit_per_server=limit,
     )
     run(state, _search(state, query, "federated-attribute-search"))

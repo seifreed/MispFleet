@@ -323,9 +323,43 @@ def test_search_query_empty_payload_is_minimal() -> None:
     eq(SearchQuery().to_misp_payload(), {"returnFormat": "json"})
 
 
+def test_search_query_extended_criteria() -> None:
+    query = SearchQuery(
+        organisations={"CIRCL", "ACME"},
+        threat_level="2",
+        analysis="1",
+        object_name="file",
+        distribution="1",
+        timestamp_from=datetime(2026, 1, 1, tzinfo=UTC),
+        timestamp_to=datetime(2026, 2, 1, tzinfo=UTC),
+    )
+    payload = query.to_misp_payload()
+    eq(payload["org"], ["ACME", "CIRCL"])
+    eq(payload["threat_level_id"], "2")
+    eq(payload["analysis"], "1")
+    eq(payload["object_name"], "file")
+    eq(payload["distribution"], "1")
+    eq(payload["timestamp"], ["2026-01-01T00:00:00+00:00", "2026-02-01T00:00:00+00:00"])
+
+
+def test_search_query_one_sided_timestamp_ranges() -> None:
+    since = SearchQuery(timestamp_from=datetime(2026, 1, 1, tzinfo=UTC)).to_misp_payload()
+    eq(since["timestamp"], "2026-01-01T00:00:00+00:00")
+    until = SearchQuery(timestamp_to=datetime(2026, 2, 1, tzinfo=UTC)).to_misp_payload()
+    eq(until["timestamp"], ["0", "2026-02-01T00:00:00+00:00"])
+
+
+def test_search_query_event_id_forms() -> None:
+    numeric = SearchQuery(event_id=7).to_misp_payload()
+    eq(numeric["eventid"], "7")
+    event_uuid = uuid4()
+    both = SearchQuery(event_uuid=event_uuid, event_id=7).to_misp_payload()
+    eq(both["eventid"], [str(event_uuid), "7"])
+
+
 def test_search_query_fingerprint_is_deterministic() -> None:
-    left = SearchQuery(value="a", tags={"x", "y"})
-    right = SearchQuery(value="a", tags={"y", "x"})
+    left = SearchQuery(value="a", tags={"x", "y"}, organisations={"o1", "o2"})
+    right = SearchQuery(value="a", tags={"y", "x"}, organisations={"o2", "o1"})
     eq(left.fingerprint(), right.fingerprint())
     ne(left.fingerprint(), SearchQuery(value="b").fingerprint())
 
