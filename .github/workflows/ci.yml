@@ -56,6 +56,22 @@ jobs:
         run: python -m build
       - name: Check distribution
         run: twine check dist/*
+      - name: CLI smoke test
+        run: |
+          mispfleet version
+          mispfleet --help
+          mispfleet completion bash > /dev/null
+      - name: Wheel and sdist installation test
+        shell: bash
+        run: |
+          for artifact in dist/*.whl dist/*.tar.gz; do
+            rm -rf /tmp/install-env
+            python -m venv /tmp/install-env
+            VENV_BIN="/tmp/install-env/bin"
+            [ -d "$VENV_BIN" ] || VENV_BIN="/tmp/install-env/Scripts"
+            "$VENV_BIN/python" -m pip install --quiet "$artifact"
+            "$VENV_BIN/mispfleet" version
+          done
   docs:
     runs-on: ubuntu-latest
     steps:

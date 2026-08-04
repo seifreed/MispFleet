@@ -36,3 +36,4 @@ nav:
   - Security model: security.md
   - Compatibility & troubleshooting: compatibility.md
   - Migration & upgrades: migration.md
+  - Acceptance runbook: acceptance.md

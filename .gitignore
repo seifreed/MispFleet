@@ -14,3 +14,4 @@ site/
 .venv/
 venv/
 .DS_Store
+.codegraph/
