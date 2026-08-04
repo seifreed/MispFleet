@@ -18,6 +18,7 @@ from typing import Any, cast
 API_KEY = "test-api-key"
 
 _EVENT_VIEW = re.compile(r"^/events/view/(?P<identifier>[^/]+)$")
+_ATTRIBUTE_VIEW = re.compile(r"^/attributes/view/(?P<identifier>[^/]+)$")
 _EVENT_EDIT = re.compile(r"^/events/edit/(?P<identifier>[^/]+)$")
 
 _LIST_ROUTES = {
@@ -187,6 +188,15 @@ class _Handler(BaseHTTPRequestHandler):
                 self._reply(404, {"message": "Invalid event."})
                 return
             self._reply(200, {"Event": event})
+            return
+        attribute_view = _ATTRIBUTE_VIEW.match(self.path)
+        if self.command == "GET" and attribute_view:
+            identifier = attribute_view.group("identifier")
+            for item in app.attributes:
+                if identifier in (item.get("uuid"), item.get("id")):
+                    self._reply(200, {"Attribute": item})
+                    return
+            self._reply(404, {"message": "Invalid attribute."})
             return
         if self.command == "POST" and self.path == "/events/index":
             body_data = self._read_body()

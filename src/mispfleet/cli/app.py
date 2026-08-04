@@ -7,9 +7,13 @@ from typing import Annotated
 
 import typer
 from typer._click.core import Context as ClickContext
+from typer._click.shell_completion import get_completion_class
+from typer._completion_classes import completion_init
 from typer.core import TyperGroup
+from typer.main import get_command
 
 from mispfleet._version import __version__
+from mispfleet.cli.commands import attribute as attribute_commands
 from mispfleet.cli.commands import config as config_commands
 from mispfleet.cli.commands import event as event_commands
 from mispfleet.cli.commands import opencti as opencti_commands
@@ -91,6 +95,7 @@ app.add_typer(config_commands.app, name="config")
 app.add_typer(server_commands.app, name="servers")
 app.add_typer(search_commands.app, name="search")
 app.add_typer(event_commands.app, name="event")
+app.add_typer(attribute_commands.app, name="attribute")
 app.add_typer(policy_commands.app, name="policy")
 app.add_typer(state_commands.app, name="state")
 app.add_typer(sync_commands.app, name="sync")
@@ -104,6 +109,20 @@ app.command("apply")(apply_plan)
 def version() -> None:
     """Print the mispfleet version."""
     typer.echo(__version__)
+
+
+@app.command()
+def completion(
+    shell: Annotated[str, typer.Argument(help="Target shell: bash, zsh or fish.")],
+) -> None:
+    """Print the shell completion script for the given shell."""
+    completion_init()
+    completion_class = get_completion_class(shell)
+    if completion_class is None:
+        raise typer.BadParameter(f"unsupported shell {shell!r}; expected bash, zsh or fish")
+    command = get_command(app)
+    source = completion_class(command, {}, "mispfleet", "_MISPFLEET_COMPLETE").source()
+    typer.echo(source)
 
 
 def _version_callback(value: bool) -> None:

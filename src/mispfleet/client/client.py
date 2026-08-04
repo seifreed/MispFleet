@@ -61,6 +61,11 @@ class AttributesNamespace:
     def __init__(self, transport: AsyncTransport) -> None:
         self._transport = transport
 
+    async def get(self, attribute_id: str) -> MISPAttribute:
+        """Fetch one attribute by UUID or numeric id."""
+        data = await self._transport.request("GET", f"/attributes/view/{attribute_id}")
+        return MISPAttribute.from_misp(data.get("Attribute", data))
+
     async def search_page(self, query: SearchQuery, page: int, limit: int) -> list[dict[str, Any]]:
         """Fetch one page of raw attribute matches."""
         body = query.to_misp_payload()

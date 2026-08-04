@@ -316,6 +316,47 @@ def test_search_events_attributes_and_jsonl_output(
     eq(code, 2)
 
 
+def test_attribute_get_and_streaming_search(
+    cli_servers: tuple[Path, FakeMisp, FakeMisp], env: dict[str, str], tmp_path: Path
+) -> None:
+    config, research, production = cli_servers
+    seed(research)
+    seed(production)
+    attribute_uuid = "1f2b8a1e-0000-4000-8000-000000000001"
+    research.attributes[0]["uuid"] = attribute_uuid
+    code, output = invoke(["--server", "research", "attribute", "get", attribute_uuid], env, config)
+    eq(code, 0)
+    contains(output, "evil.example")
+    code, _ = invoke(["attribute", "get", attribute_uuid], env, config)
+    eq(code, 2)
+    code, output = invoke(["attribute", "search", "--type", "domain", "--all"], env, config)
+    eq(code, 0)
+    lines = [json.loads(line) for line in output.splitlines() if line.startswith("{")]
+    eq(len(lines), 2)
+    eq({line["server"] for line in lines}, {"research", "production"})
+    out_file = tmp_path / "attributes.jsonl"
+    code, _ = invoke(
+        ["--output", str(out_file), "attribute", "search", "--type", "domain", "--all"],
+        env,
+        config,
+    )
+    eq(code, 0)
+    eq(len(out_file.read_text(encoding="utf-8").splitlines()), 2)
+    code, _ = invoke(["attribute", "search", "--type", "missing-type", "--all"], env, config)
+    eq(code, 11)
+
+
+def test_completion_scripts(env: dict[str, str]) -> None:
+    code, output = invoke(["completion", "zsh"], env)
+    eq(code, 0)
+    contains(output, "#compdef mispfleet")
+    code, output = invoke(["completion", "bash"], env)
+    eq(code, 0)
+    contains(output, "_mispfleet_completion")
+    code, _ = invoke(["completion", "tcsh"], env)
+    eq(code, 2)
+
+
 def test_search_extended_filters_reach_server(
     cli_servers: tuple[Path, FakeMisp, FakeMisp], env: dict[str, str]
 ) -> None:
