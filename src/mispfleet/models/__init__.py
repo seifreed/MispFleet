@@ -1,6 +1,6 @@
 """Typed domain models shared by the library and the CLI."""
 
-from mispfleet.models.attribute import MISPAttribute, MISPObject
+from mispfleet.models.attribute import MISPAttribute, MISPObject, ObjectReference
 from mispfleet.models.common import (
     EventIdentifier,
     ExecutionOptions,
@@ -11,7 +11,7 @@ from mispfleet.models.common import (
     ServerRole,
 )
 from mispfleet.models.diff import Difference, DiffOperation, DiffSummary, EventDiff
-from mispfleet.models.event import MISPEvent
+from mispfleet.models.event import Galaxy, MISPEvent, Proposal, Sighting
 from mispfleet.models.plan import (
     ApplyResult,
     ConflictAction,
@@ -48,15 +48,18 @@ __all__ = [
     "FederatedMatch",
     "FederatedSearchResult",
     "FleetHealthResult",
+    "Galaxy",
     "MISPAttribute",
     "MISPEvent",
     "MISPObject",
     "MatchGroup",
     "MatchLevel",
     "MultiServerResult",
+    "ObjectReference",
     "OperationPlan",
     "OperationWarning",
     "PlanIssue",
+    "Proposal",
     "RetryConfig",
     "SearchQuery",
     "ServerConfig",
@@ -64,6 +67,7 @@ __all__ = [
     "ServerHealth",
     "ServerName",
     "ServerRole",
+    "Sighting",
     "Transformation",
     "ValidationResult",
 ]

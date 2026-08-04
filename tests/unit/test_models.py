@@ -23,18 +23,22 @@ from mispfleet.models import (
     FailurePolicy,
     FederatedMatch,
     FederatedSearchResult,
+    Galaxy,
     MatchGroup,
     MatchLevel,
     MISPAttribute,
     MISPEvent,
     MISPObject,
     MultiServerResult,
+    ObjectReference,
     OperationWarning,
+    Proposal,
     SearchQuery,
     ServerConfig,
     ServerError,
     ServerHealth,
     ServerRole,
+    Sighting,
 )
 from mispfleet.models.attribute import tag_names
 from tests.support import contains, eq, ne, not_contains, ok
@@ -49,6 +53,9 @@ RAW_ATTRIBUTE = {
     "comment": "seen in campaign",
     "deleted": False,
     "timestamp": "1700000000",
+    "distribution": "1",
+    "sharing_group_id": "2",
+    "data": "aGVsbG8=",
     "Tag": [{"name": "tlp:green"}, {"colour": "#ffffff"}],
 }
 
@@ -62,7 +69,8 @@ RAW_EVENT: dict[str, Any] = {
         "threat_level_id": "2",
         "analysis": "1",
         "timestamp": "1700000001",
-        "Orgc": {"name": "CIRCL"},
+        "sharing_group_id": "3",
+        "Orgc": {"name": "CIRCL", "uuid": "5c5c1c2e-0000-4000-8000-000000000010"},
         "Tag": [{"name": "tlp:green"}],
         "Attribute": [RAW_ATTRIBUTE],
         "Object": [
@@ -71,6 +79,8 @@ RAW_EVENT: dict[str, Any] = {
                 "name": "file",
                 "template_uuid": "t-1",
                 "comment": "",
+                "distribution": "1",
+                "sharing_group_id": "3",
                 "Attribute": [
                     {
                         "type": "sha256",
@@ -79,6 +89,39 @@ RAW_EVENT: dict[str, Any] = {
                         "timestamp": "1700000002",
                     }
                 ],
+                "ObjectReference": [
+                    {
+                        "uuid": "4a5c1c2e-0000-4000-8000-000000000011",
+                        "object_uuid": "3a5c1c2e-0000-4000-8000-00000000000f",
+                        "referenced_uuid": "1f2b8a1e-0000-4000-8000-000000000001",
+                        "relationship_type": "related-to",
+                    }
+                ],
+            }
+        ],
+        "Galaxy": [
+            {
+                "uuid": "6a5c1c2e-0000-4000-8000-000000000012",
+                "name": "Threat Actor",
+                "GalaxyCluster": [{"value": "APT-X"}, {"description": "no value"}],
+            }
+        ],
+        "Sighting": [
+            {
+                "uuid": "7a5c1c2e-0000-4000-8000-000000000013",
+                "attribute_uuid": "1f2b8a1e-0000-4000-8000-000000000001",
+                "type": "0",
+                "date_sighting": "1700000003",
+                "Organisation": {"name": "CIRCL"},
+            }
+        ],
+        "ShadowAttribute": [
+            {
+                "uuid": "8a5c1c2e-0000-4000-8000-000000000014",
+                "type": "domain",
+                "value": "proposed.example",
+                "category": "Network activity",
+                "to_ids": True,
             }
         ],
     }
@@ -155,16 +198,92 @@ def test_event_from_misp_wrapped_and_plain() -> None:
     eq(plain.orgc, None)
 
 
+def test_object_reference_round_trip() -> None:
+    raw = RAW_EVENT["Event"]["Object"][0]["ObjectReference"][0]
+    reference = ObjectReference.from_misp(raw)
+    eq(reference.relationship_type, "related-to")
+    eq(reference.to_misp(), raw)
+    minimal = ObjectReference.from_misp({"referenced_uuid": "ref-1"})
+    eq(minimal.relationship_type, "")
+    minimal_payload = minimal.to_misp()
+    not_contains(minimal_payload, "uuid")
+    not_contains(minimal_payload, "object_uuid")
+
+
+def test_galaxy_round_trip() -> None:
+    raw = RAW_EVENT["Event"]["Galaxy"][0]
+    galaxy = Galaxy.from_misp(raw)
+    eq(galaxy.name, "Threat Actor")
+    eq(galaxy.clusters, {"APT-X"})
+    contains(galaxy.to_misp(), "uuid")
+    minimal = Galaxy.from_misp({"name": "bare"})
+    eq(minimal.clusters, set())
+    not_contains(minimal.to_misp(), "uuid")
+
+
+def test_sighting_round_trip() -> None:
+    raw = RAW_EVENT["Event"]["Sighting"][0]
+    sighting = Sighting.from_misp(raw)
+    eq(sighting.organisation, "CIRCL")
+    eq(sighting.to_misp(), raw)
+    minimal = Sighting.from_misp({})
+    eq(minimal.type, "0")
+    eq(minimal.to_misp(), {"type": "0"})
+
+
+def test_proposal_round_trip() -> None:
+    raw = RAW_EVENT["Event"]["ShadowAttribute"][0]
+    proposal = Proposal.from_misp(raw)
+    eq(proposal.value, "proposed.example")
+    eq(proposal.to_misp(), raw)
+    minimal = Proposal.from_misp({"type": "domain", "value": "x.example"})
+    minimal_payload = minimal.to_misp()
+    not_contains(minimal_payload, "uuid")
+    not_contains(minimal_payload, "category")
+
+
+def test_event_parses_new_structures() -> None:
+    event = MISPEvent.from_misp(RAW_EVENT)
+    eq(event.sharing_group_id, "3")
+    eq(event.orgc_uuid, "5c5c1c2e-0000-4000-8000-000000000010")
+    eq(len(event.galaxies), 1)
+    eq(len(event.sightings), 1)
+    eq(len(event.proposals), 1)
+    obj = event.objects[0]
+    eq(obj.distribution, "1")
+    eq(obj.sharing_group_id, "3")
+    eq(len(obj.references), 1)
+    attribute = event.attributes[0]
+    eq(attribute.distribution, "1")
+    eq(attribute.sharing_group_id, "2")
+    eq(attribute.data, "aGVsbG8=")
+
+
+def test_event_to_misp_orgc_variants() -> None:
+    uuid_only = MISPEvent(uuid="e-1", orgc_uuid="org-uuid")
+    eq(uuid_only.to_misp()["Orgc"], {"uuid": "org-uuid"})
+    name_only = MISPEvent(uuid="e-2", orgc="CIRCL")
+    eq(name_only.to_misp()["Orgc"], {"name": "CIRCL"})
+    neither = MISPEvent(uuid="e-3")
+    not_contains(neither.to_misp(), "Orgc")
+
+
 def test_canonical_fingerprint_ignores_volatile_fields_and_order() -> None:
     left = MISPEvent.from_misp(RAW_EVENT)
     shuffled = MISPEvent.from_misp(RAW_EVENT)
     shuffled.timestamp = "9999999999"
     shuffled.attributes = list(reversed(shuffled.attributes))
     shuffled.objects = list(reversed(shuffled.objects))
+    shuffled.galaxies = list(reversed(shuffled.galaxies))
+    shuffled.sightings = []
+    shuffled.proposals = []
     eq(left.canonical_fingerprint(), shuffled.canonical_fingerprint())
     changed = MISPEvent.from_misp(RAW_EVENT)
     changed.info = "renamed"
     ne(left.canonical_fingerprint(), changed.canonical_fingerprint())
+    regrouped = MISPEvent.from_misp(RAW_EVENT)
+    regrouped.galaxies[0].clusters.add("APT-Y")
+    ne(left.canonical_fingerprint(), regrouped.canonical_fingerprint())
 
 
 def test_search_query_payload_includes_all_requested_criteria() -> None:
@@ -311,18 +430,29 @@ def test_attribute_and_object_to_misp_round_trip() -> None:
     eq(payload["uuid"], full.uuid)
     eq(payload["category"], "Network activity")
     eq(payload["Tag"], [{"name": "tlp:green"}])
+    eq(payload["distribution"], "1")
+    eq(payload["sharing_group_id"], "2")
+    eq(payload["data"], "aGVsbG8=")
     minimal = MISPAttribute(type="domain", value="x.example")
     minimal_payload = minimal.to_misp()
     not_contains(minimal_payload, "uuid")
     not_contains(minimal_payload, "category")
+    not_contains(minimal_payload, "distribution")
+    not_contains(minimal_payload, "sharing_group_id")
+    not_contains(minimal_payload, "data")
     obj = MISPObject.from_misp(RAW_EVENT["Event"]["Object"][0])
     obj_payload = obj.to_misp()
     eq(obj_payload["name"], "file")
     eq(obj_payload["template_uuid"], "t-1")
     eq(len(obj_payload["Attribute"]), 1)
+    eq(obj_payload["distribution"], "1")
+    eq(obj_payload["sharing_group_id"], "3")
+    eq(len(obj_payload["ObjectReference"]), 1)
     bare_object = MISPObject(name="bare").to_misp()
     not_contains(bare_object, "uuid")
     not_contains(bare_object, "template_uuid")
+    not_contains(bare_object, "distribution")
+    not_contains(bare_object, "sharing_group_id")
 
 
 def test_event_to_misp_round_trip_preserves_fingerprint() -> None:

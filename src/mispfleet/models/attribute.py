@@ -24,6 +24,9 @@ class MISPAttribute(BaseModel):
     comment: str = ""
     deleted: bool = False
     timestamp: str | None = None
+    distribution: str | None = None
+    sharing_group_id: str | None = None
+    data: str | None = None
     tags: set[str] = Field(default_factory=set)
 
     @classmethod
@@ -39,6 +42,9 @@ class MISPAttribute(BaseModel):
             comment=str(raw.get("comment", "")),
             deleted=bool(raw.get("deleted", False)),
             timestamp=str(raw["timestamp"]) if "timestamp" in raw else None,
+            distribution=str(raw["distribution"]) if "distribution" in raw else None,
+            sharing_group_id=str(raw["sharing_group_id"]) if "sharing_group_id" in raw else None,
+            data=raw.get("data"),
             tags=tag_names(raw),
         )
 
@@ -55,6 +61,43 @@ class MISPAttribute(BaseModel):
             payload["uuid"] = self.uuid
         if self.category is not None:
             payload["category"] = self.category
+        if self.distribution is not None:
+            payload["distribution"] = self.distribution
+        if self.sharing_group_id is not None:
+            payload["sharing_group_id"] = self.sharing_group_id
+        if self.data is not None:
+            payload["data"] = self.data
+        return payload
+
+
+class ObjectReference(BaseModel):
+    """Normalized representation of a MISP object reference."""
+
+    uuid: str | None = None
+    object_uuid: str | None = None
+    referenced_uuid: str
+    relationship_type: str = ""
+
+    @classmethod
+    def from_misp(cls, raw: dict[str, Any]) -> ObjectReference:
+        """Build a normalized object reference from a raw MISP JSON payload."""
+        return cls(
+            uuid=raw.get("uuid"),
+            object_uuid=raw.get("object_uuid"),
+            referenced_uuid=str(raw["referenced_uuid"]),
+            relationship_type=str(raw.get("relationship_type", "")),
+        )
+
+    def to_misp(self) -> dict[str, Any]:
+        """Serialize back into a MISP API object-reference payload."""
+        payload: dict[str, Any] = {
+            "referenced_uuid": self.referenced_uuid,
+            "relationship_type": self.relationship_type,
+        }
+        if self.uuid is not None:
+            payload["uuid"] = self.uuid
+        if self.object_uuid is not None:
+            payload["object_uuid"] = self.object_uuid
         return payload
 
 
@@ -65,7 +108,10 @@ class MISPObject(BaseModel):
     name: str
     template_uuid: str | None = None
     comment: str = ""
+    distribution: str | None = None
+    sharing_group_id: str | None = None
     attributes: list[MISPAttribute] = Field(default_factory=list)
+    references: list[ObjectReference] = Field(default_factory=list)
 
     @classmethod
     def from_misp(cls, raw: dict[str, Any]) -> MISPObject:
@@ -75,7 +121,10 @@ class MISPObject(BaseModel):
             name=str(raw["name"]),
             template_uuid=raw.get("template_uuid"),
             comment=str(raw.get("comment", "")),
+            distribution=str(raw["distribution"]) if "distribution" in raw else None,
+            sharing_group_id=str(raw["sharing_group_id"]) if "sharing_group_id" in raw else None,
             attributes=[MISPAttribute.from_misp(item) for item in raw.get("Attribute", [])],
+            references=[ObjectReference.from_misp(item) for item in raw.get("ObjectReference", [])],
         )
 
     def to_misp(self) -> dict[str, Any]:
@@ -84,9 +133,14 @@ class MISPObject(BaseModel):
             "name": self.name,
             "comment": self.comment,
             "Attribute": [attribute.to_misp() for attribute in self.attributes],
+            "ObjectReference": [reference.to_misp() for reference in self.references],
         }
         if self.uuid is not None:
             payload["uuid"] = self.uuid
         if self.template_uuid is not None:
             payload["template_uuid"] = self.template_uuid
+        if self.distribution is not None:
+            payload["distribution"] = self.distribution
+        if self.sharing_group_id is not None:
+            payload["sharing_group_id"] = self.sharing_group_id
         return payload
