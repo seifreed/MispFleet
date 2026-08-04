@@ -35,6 +35,8 @@ dependencies = [
 keyring = ["keyring>=25.0"]
 mariadb = ["pymysql>=1.1"]
 http2 = ["h2>=4.1"]
+docs = ["mkdocs-material>=9.6"]
+test = ["pytest>=9.1", "pytest-asyncio>=1.4", "pytest-cov>=7.1", "hypothesis>=6.150"]
 all = ["keyring>=25.0", "pymysql>=1.1", "h2>=4.1"]
 dev = [
     "keyring>=25.0",
