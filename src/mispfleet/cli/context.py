@@ -16,10 +16,12 @@ from rich.console import Console
 
 from mispfleet.exceptions import (
     APIError,
+    AttachmentSecurityError,
     AuthenticationError,
     CapabilityError,
     ConfigurationError,
     ConflictError,
+    InvalidConfigurationError,
     MispFleetError,
     PartialFleetError,
     PlanError,
@@ -70,7 +72,7 @@ def since_to_datetime(text: str) -> datetime:
 
 def exit_code_for(error: MispFleetError) -> int:
     """Map a typed exception onto the documented CLI exit codes."""
-    if isinstance(error, TLSVerificationError):
+    if isinstance(error, TLSVerificationError | AttachmentSecurityError):
         return EXIT_SECURITY
     if isinstance(error, AuthenticationError):
         return EXIT_AUTHENTICATION
@@ -116,6 +118,7 @@ class CLIState:
     concurrency: int | None = None
     non_interactive: bool = False
     trace: bool = False
+    no_verify_tls: bool = False
 
     def configure_logging(self) -> None:
         """Attach the redacting stderr handler to the mispfleet hierarchy."""
@@ -134,12 +137,19 @@ class CLIState:
     def load_config(self) -> FleetConfig:
         """Load configuration applying CLI-level overrides."""
         config = load_fleet_config(self.config_path, self.profile)
-        if self.timeout is not None or self.concurrency is not None:
+        if self.no_verify_tls and config.security.forbid_insecure_tls:
+            raise InvalidConfigurationError(
+                "--no-verify-tls is not allowed: the configuration forbids "
+                "insecure TLS (security.forbid_insecure_tls)"
+            )
+        if self.timeout is not None or self.concurrency is not None or self.no_verify_tls:
             overrides: dict[str, Any] = {}
             if self.timeout is not None:
                 overrides["request_timeout"] = self.timeout
             if self.concurrency is not None:
                 overrides["concurrency"] = self.concurrency
+            if self.no_verify_tls:
+                overrides["verify_tls"] = False
             config = config.model_copy(
                 update={
                     "servers": {

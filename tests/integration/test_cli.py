@@ -346,6 +346,108 @@ def test_attribute_get_and_streaming_search(
     eq(code, 11)
 
 
+def test_attribute_download_saves_attachment(
+    cli_servers: tuple[Path, FakeMisp, FakeMisp], env: dict[str, str], tmp_path: Path
+) -> None:
+    config, research, _production = cli_servers
+    seed(research)
+    attribute_uuid = "1f2b8a1e-0000-4000-8000-000000000001"
+    research.attributes[0]["uuid"] = attribute_uuid
+    downloads = tmp_path / "downloads"
+    code, _ = invoke(
+        [
+            "--server",
+            "research",
+            "attribute",
+            "get",
+            attribute_uuid,
+            "--download",
+            str(downloads),
+        ],
+        env,
+        config,
+    )
+    eq(code, 11)
+    research.attributes[0]["type"] = "attachment"
+    research.attributes[0]["value"] = "../evil/dropper.bin|deadbeef"
+    research.attributes[0]["data"] = "bWFsd2FyZQ=="
+    code, _ = invoke(
+        [
+            "--server",
+            "research",
+            "attribute",
+            "get",
+            attribute_uuid,
+            "--download",
+            str(downloads),
+        ],
+        env,
+        config,
+    )
+    eq(code, 0)
+    eq((downloads / "dropper.bin").read_bytes(), b"malware")
+    code, _ = invoke(
+        [
+            "--server",
+            "research",
+            "attribute",
+            "get",
+            attribute_uuid,
+            "--download",
+            str(downloads),
+        ],
+        env,
+        config,
+    )
+    eq(code, 13)
+
+
+def test_no_verify_tls_flag_warns_and_overrides(
+    cli_servers: tuple[Path, FakeMisp, FakeMisp], env: dict[str, str]
+) -> None:
+    config, _research, _production = cli_servers
+    result = runner.invoke(
+        app, ["--config", str(config), "--no-verify-tls", "servers", "list"], env=env
+    )
+    eq(result.exit_code, 0)
+    contains(result.stderr, "TLS certificate verification is DISABLED")
+
+
+def test_forbid_insecure_tls_blocks_config_and_flag(tmp_path: Path, env: dict[str, str]) -> None:
+    config = tmp_path / "config.yml"
+    config.write_text(
+        f"""
+version: 1
+security:
+  forbid_insecure_tls: true
+servers:
+  research:
+    url: https://misp.example
+    credential: {{provider: env, key: {ENV_KEY}}}
+    verify_tls: false
+""",
+        encoding="utf-8",
+    )
+    code, _ = invoke(["servers", "list"], env, config)
+    eq(code, 3)
+    config.write_text(
+        f"""
+version: 1
+security:
+  forbid_insecure_tls: true
+servers:
+  research:
+    url: https://misp.example
+    credential: {{provider: env, key: {ENV_KEY}}}
+""",
+        encoding="utf-8",
+    )
+    code, _ = invoke(["servers", "list"], env, config)
+    eq(code, 0)
+    code, _ = invoke(["--no-verify-tls", "servers", "list"], env, config)
+    eq(code, 3)
+
+
 def test_completion_scripts(env: dict[str, str]) -> None:
     code, output = invoke(["completion", "zsh"], env)
     eq(code, 0)

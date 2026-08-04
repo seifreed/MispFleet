@@ -137,6 +137,10 @@ class StateError(MispFleetError):
     """Local state backend failure."""
 
 
+class AttachmentSecurityError(MispFleetError):
+    """An attachment failed a filesystem-safety check."""
+
+
 class PartialFleetError(MispFleetError):
     """A fleet operation failed on some servers under a strict failure policy."""
 

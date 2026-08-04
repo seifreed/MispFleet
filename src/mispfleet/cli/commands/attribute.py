@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Annotated
 
 import typer
 
+from mispfleet.attachments import write_attachment
 from mispfleet.cli.context import (
     EXIT_NO_MATCHES,
     EXIT_SUCCESS,
@@ -31,6 +33,10 @@ def _single_server(state: CLIState) -> str:
 def get(
     ctx: typer.Context,
     attribute_id: Annotated[str, typer.Argument(help="Attribute UUID or numeric id.")],
+    download: Annotated[
+        Path | None,
+        typer.Option("--download", help="Save the attachment payload into this directory."),
+    ] = None,
 ) -> None:
     """Fetch one attribute from one server (--server NAME)."""
     state = state_of(ctx)
@@ -39,9 +45,17 @@ def get(
     async def inner() -> int:
         async with state.build_fleet() as fleet:
             attribute = await fleet.client(server).attributes.get(attribute_id)
+        payload: dict[str, object] = {"server": server, "attribute": attribute}
+        if download is not None:
+            if attribute.data is None:
+                state.emit("attribute-get", payload | {"saved_to": None})
+                return EXIT_NO_MATCHES
+            filename = attribute.value.split("|", 1)[0]
+            saved = write_attachment(attribute.data, download, filename)
+            payload["saved_to"] = str(saved)
         state.emit(
             "attribute-get",
-            {"server": server, "attribute": attribute},
+            payload,
             render=lambda console: console.print_json(data=attribute.model_dump(mode="json")),
         )
         return EXIT_SUCCESS

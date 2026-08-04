@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from rich.console import Console
 from typer._click.core import Context as ClickContext
 from typer._click.shell_completion import get_completion_class
 from typer._completion_classes import completion_init
@@ -35,6 +36,7 @@ _GLOBAL_FLAGS = frozenset(
         "--verbose",
         "--non-interactive",
         "--trace",
+        "--no-verify-tls",
     }
 )
 
@@ -176,6 +178,13 @@ def main_callback(
         bool, typer.Option("--non-interactive", help="Never prompt for input.")
     ] = False,
     trace: Annotated[bool, typer.Option("--trace", help="Raw tracebacks for debugging.")] = False,
+    no_verify_tls: Annotated[
+        bool,
+        typer.Option(
+            "--no-verify-tls",
+            help="Disable TLS certificate verification for every server (dangerous).",
+        ),
+    ] = False,
     version: Annotated[
         bool,
         typer.Option("--version", callback=_version_callback, is_eager=True, help="Show version."),
@@ -204,8 +213,14 @@ def main_callback(
         concurrency=concurrency,
         non_interactive=non_interactive,
         trace=trace,
+        no_verify_tls=no_verify_tls,
     )
     state.configure_logging()
+    if no_verify_tls:
+        Console(stderr=True, no_color=no_color).print(
+            "[yellow]warning[/yellow]: TLS certificate verification is DISABLED "
+            "for every server (--no-verify-tls)"
+        )
     ctx.obj = state
 
 

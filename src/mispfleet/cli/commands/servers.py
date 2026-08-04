@@ -33,17 +33,21 @@ app.add_typer(templates_app, name="templates")
 def list_servers(ctx: typer.Context) -> None:
     """List configured servers."""
     state = state_of(ctx)
-    config = state.load_config()
-    servers = list(config.servers.values())
-    state.emit(
-        "servers-list",
-        {
-            "servers": [
-                redact_mapping(jsonable(server.model_dump(mode="json"))) for server in servers
-            ]
-        },
-        render=lambda console: render_servers(console, servers),
-    )
+
+    def body() -> None:
+        config = state.load_config()
+        servers = list(config.servers.values())
+        state.emit(
+            "servers-list",
+            {
+                "servers": [
+                    redact_mapping(jsonable(server.model_dump(mode="json"))) for server in servers
+                ]
+            },
+            render=lambda console: render_servers(console, servers),
+        )
+
+    guard(state, body)
 
 
 @app.command()

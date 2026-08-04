@@ -43,6 +43,14 @@ class FleetDefaults(BaseModel):
     max_response_bytes: int = Field(default=50_000_000, ge=1)
 
 
+class SecuritySettings(BaseModel):
+    """Fleet-wide security constraints."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    forbid_insecure_tls: bool = False
+
+
 class StateSettings(BaseModel):
     """Selection and location of the local state backend."""
 
@@ -78,6 +86,7 @@ class FleetConfig(BaseModel):
     policies: dict[str, PolicySpec] = Field(default_factory=dict)
     sync_jobs: dict[str, SyncJobSpec] = Field(default_factory=dict)
     state: StateSettings = Field(default_factory=StateSettings)
+    security: SecuritySettings = Field(default_factory=SecuritySettings)
 
 
 def default_config_path() -> Path:
@@ -169,6 +178,7 @@ def load_fleet_config(path: Path | None = None, profile: str | None = None) -> F
             for name, spec in (data.get("policies") or {}).items()
         }
         state = StateSettings.model_validate(data.get("state") or {})
+        security = SecuritySettings.model_validate(data.get("security") or {})
         sync_jobs = {
             str(name): SyncJobSpec.model_validate(spec or {})
             for name, spec in (data.get("sync_jobs") or {}).items()
@@ -176,6 +186,13 @@ def load_fleet_config(path: Path | None = None, profile: str | None = None) -> F
     except PydanticValidationError as error:
         raise InvalidConfigurationError(str(error)) from error
     servers = _build_servers(data.get("servers") or {}, defaults)
+    if security.forbid_insecure_tls:
+        insecure = sorted(name for name, server in servers.items() if not server.verify_tls)
+        if insecure:
+            raise InvalidConfigurationError(
+                f"TLS verification is disabled for {insecure} but the configuration "
+                "forbids insecure TLS (security.forbid_insecure_tls)"
+            )
     return FleetConfig(
         version=version,
         defaults=defaults,
@@ -183,4 +200,5 @@ def load_fleet_config(path: Path | None = None, profile: str | None = None) -> F
         policies=policies,
         sync_jobs=sync_jobs,
         state=state,
+        security=security,
     )
