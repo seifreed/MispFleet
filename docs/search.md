@@ -12,7 +12,16 @@ mispfleet search value HASH --group partners
 mispfleet search events --info ransomware --since 30d --all
 mispfleet search attributes --type sha256 --tag tlp:green --since 7d \
   --all --format jsonl --output hashes.jsonl
+mispfleet search events --org CIRCL --threat-level 2 --analysis 1 --all
+mispfleet search attributes --object-name file --timestamp-since 7d --all
+mispfleet attribute search --type sha256 --all --output hashes.jsonl
 ```
+
+Supported criteria: indicator value, attribute or event UUID, numeric event
+id, event info text, attribute type, category, tags (required and excluded),
+organisations, published state, date range, timestamp range, distribution,
+threat level, analysis level, object name, deleted attributes, warning-list
+enforcement and metadata-only mode.
 
 Exit codes: `0` matches found, `6` partial fleet failure (output stays valid),
 `11` no matching records.

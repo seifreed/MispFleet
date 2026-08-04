@@ -43,6 +43,11 @@ policies:
     add_tags: ["imported-by:mispfleet"]
     reject_if:
       tags: ["tlp:red"]
+security:
+  forbid_insecure_tls: true
+state:
+  backend: sqlite
+  capability_ttl_seconds: 3600
 profiles:
   lab:
     defaults:
@@ -68,7 +73,24 @@ Every server accepts: `url`, `credential`, `enabled`, `read_only`,
 `groups`, `role` (`general`, `primary`, `research`, `partner`),
 `request_timeout`, `connect_timeout`, `concurrency`, `rate_limit`, `retry`
 (`max_attempts`, `initial_delay`, `multiplier`, `max_delay`, `jitter`,
-`respect_retry_after`), `proxy` and `allow_insecure_http`.
+`respect_retry_after`), `proxy`, `allow_insecure_http`, `http2`,
+`max_keepalive_connections`, `keepalive_expiry` and `max_response_bytes`.
+
+`http2: true` needs the optional extra (`pip install 'mispfleet[http2]'`) and
+falls back to HTTP/1.1 when the server does not negotiate HTTP/2. Keepalive
+settings map to the connection pool; unset means httpx defaults.
 
 Plain `http://` URLs are rejected unless `allow_insecure_http: true` is set
 explicitly. Duplicate server names (case-insensitive) are rejected.
+
+## Fleet-wide sections
+
+`defaults` accepts the transport subset applied to every server
+(`verify_tls`, `request_timeout`, `connect_timeout`, `concurrency`, `http2`,
+`max_keepalive_connections`, `keepalive_expiry`, `max_response_bytes`).
+
+`security.forbid_insecure_tls: true` refuses any configuration or CLI flag
+that would disable TLS verification. `state` selects the backend (`sqlite` or
+`mariadb`), its location and `capability_ttl_seconds`, the lifetime of cached
+server capabilities. Unknown keys in these sections are configuration errors,
+not silently ignored settings.

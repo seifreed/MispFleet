@@ -21,6 +21,7 @@ nav:
   - Installation & Quick start: quickstart.md
   - Configuration: configuration.md
   - Credential security: credentials.md
+  - Server groups: server-groups.md
   - Federated search: search.md
   - Health checks: health.md
   - Event diff: diff.md
@@ -30,6 +31,8 @@ nav:
   - STIX, TAXII & OpenCTI: stix.md
   - Python API: api.md
   - CLI reference & exit codes: cli.md
+  - Error handling: error-handling.md
   - Plugins: plugins.md
   - Security model: security.md
   - Compatibility & troubleshooting: compatibility.md
+  - Migration & upgrades: migration.md

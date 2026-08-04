@@ -48,12 +48,24 @@ policies:
     rename_tags: {"tlp:green": "tlp:clear"}
     required_tags: []
     remove_attribute_types: [passport-number]
+    reject_attribute_types: [btc]                 # drops those attributes, keeps the event
     remove_comments: true
     set_published: false
+    set_to_ids: false                             # force to_ids on every attribute
+    redact_values: ['^198\.51\.']                 # regex; matches become ***REDACTED***
+    organisation_map: {"Research Org": "Public Org"}
+    sharing_group_map: {"1": "9"}                 # event, attribute and object sharing groups
+    allowed_object_names: [file, domain-ip]       # anything else rejects the event
+    max_attachment_bytes: 10485760                # oversized attachments are stripped
     reject_if:
       tags: ["tlp:red"]
-      attribute_types: []
+      attribute_types: []                         # rejects the whole event
 ```
+
+Two ways to deal with unwanted attribute types: `reject_if.attribute_types`
+rejects the **entire event** when one is present, while
+`reject_attribute_types` filters those attributes out and lets the rest
+through with a warning. `remove_attribute_types` removes them silently.
 
 Policies are deterministic: the same input always produces the same
 transformations. Test them locally:

@@ -6,6 +6,7 @@ mispfleet
 ├── servers     list | show | test | health | versions | capabilities | templates diff
 ├── search      value | events | attributes
 ├── event       get | find | diff | copy | export | validate
+├── attribute   get | search
 ├── policy      list | show | validate | test
 ├── sync        list | plan | run
 ├── stix        export | push
@@ -13,18 +14,49 @@ mispfleet
 ├── state       info | checkpoints | checkpoint show/delete | operations | prune
 ├── plugins     list
 ├── apply       PLAN_FILE
+├── completion  bash | zsh | fish
 └── version
 ```
 
 ## Global options
 
 `--config PATH`, `--profile NAME`, `--server NAME` (repeatable), `--group`,
-`--tag`, `--role`, `--all`, `--exclude-server`, `--format table|json|jsonl|yaml`,
-`--output PATH`, `--log-level`, `--log-format text|json`, `--no-color`,
-`--quiet`, `--verbose`, `--timeout`, `--concurrency`, `--non-interactive`,
-`--trace`, `--version`. Global options may appear before or after the
-subcommand (`mispfleet search value X --all --format json`). Shell completion
-is available through `--install-completion`.
+`--tag`, `--role`, `--all`, `--exclude-server`,
+`--format table|json|jsonl|yaml|patch`, `--output PATH`, `--log-level`,
+`--log-format text|json`, `--no-color`, `--quiet`, `--verbose`, `--timeout`,
+`--concurrency`, `--non-interactive`, `--no-verify-tls`, `--trace`,
+`--version`. Global options may appear before or after the subcommand
+(`mispfleet search value X --all --format json`).
+
+`--format patch` is only accepted by `event diff`; other commands reject it
+as a usage error. `--no-verify-tls` disables certificate verification for
+every server and prints a visible warning on stderr; a configuration with
+`security.forbid_insecure_tls: true` refuses the flag with exit code 3.
+
+## Search filters
+
+`search events` accepts `--info`, `--since`, `--tag`, `--org`,
+`--threat-level`, `--analysis` and `--distribution`. `search attributes`
+accepts `--type`, `--tag`, `--since`, `--limit`, `--org`, `--object-name`,
+`--distribution`, `--timestamp-since` and `--timestamp-until`.
+
+## Attributes
+
+`attribute get UUID --server NAME` fetches a single attribute; add
+`--download DIR` to store an attachment payload (the remote filename is
+sanitized, the file is created with owner-only permissions and an existing
+file is never overwritten). `attribute search` streams JSON lines without
+buffering the dataset, honoring the global selector and `--output`.
+
+## Shell completion
+
+`mispfleet completion zsh` (or `bash`/`fish`) prints the completion script:
+
+```bash
+mispfleet completion zsh > ~/.zfunc/_mispfleet
+```
+
+Typer's `--install-completion` also remains available.
 
 ## Output rules
 
