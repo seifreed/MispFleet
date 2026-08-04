@@ -13,6 +13,7 @@ from mispfleet.models import (
     SearchQuery,
     ServerConfig,
 )
+from mispfleet.observability import MetricsSink
 
 __all__ = [
     "CopyPlan",
@@ -20,6 +21,7 @@ __all__ = [
     "ExecutionOptions",
     "FailurePolicy",
     "FederatedSearchResult",
+    "MetricsSink",
     "MispClient",
     "MispFleet",
     "MispFleetError",

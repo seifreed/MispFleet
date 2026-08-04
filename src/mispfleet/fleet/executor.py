@@ -11,6 +11,7 @@ from mispfleet.exceptions import MispFleetError, PartialFleetError
 from mispfleet.logging import get_logger
 from mispfleet.models.common import ExecutionOptions, FailurePolicy, ServerError
 from mispfleet.models.result import MultiServerResult
+from mispfleet.observability import current_operation_id
 
 logger = get_logger("fleet.executor")
 
@@ -47,6 +48,8 @@ class FleetExecutor:
         started_at = datetime.now(tz=UTC)
         loop = asyncio.get_running_loop()
         clock_start = loop.time()
+        operation_id = uuid4()
+        context_token = current_operation_id.set(str(operation_id))
 
         async def run_one(name: str) -> None:
             async with semaphore:
@@ -64,8 +67,10 @@ class FleetExecutor:
                     group.create_task(run_one(name))
         except* MispFleetError:
             pass
+        finally:
+            current_operation_id.reset(context_token)
         envelope = MultiServerResult[T](
-            operation_id=uuid4(),
+            operation_id=operation_id,
             started_at=started_at,
             completed_at=datetime.now(tz=UTC),
             duration_ms=(loop.time() - clock_start) * 1000.0,

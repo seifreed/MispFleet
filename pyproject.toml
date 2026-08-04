@@ -34,10 +34,12 @@ dependencies = [
 [project.optional-dependencies]
 keyring = ["keyring>=25.0"]
 mariadb = ["pymysql>=1.1"]
-all = ["keyring>=25.0", "pymysql>=1.1"]
+http2 = ["h2>=4.1"]
+all = ["keyring>=25.0", "pymysql>=1.1", "h2>=4.1"]
 dev = [
     "keyring>=25.0",
     "pymysql>=1.1",
+    "h2>=4.1",
     "types-PyMySQL>=1.1",
     "black>=26.5",
     "ruff>=0.15",

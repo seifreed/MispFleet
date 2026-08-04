@@ -52,6 +52,10 @@ class ServerConfig(BaseModel):
     retry: RetryConfig = Field(default_factory=RetryConfig)
     proxy: str | None = None
     allow_insecure_http: bool = False
+    http2: bool = False
+    max_keepalive_connections: int | None = Field(default=None, ge=1)
+    keepalive_expiry: float | None = Field(default=None, gt=0.0)
+    max_response_bytes: int = Field(default=50_000_000, ge=1)
 
     @model_validator(mode="after")
     def _require_https_unless_explicitly_insecure(self) -> ServerConfig:

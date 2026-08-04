@@ -16,6 +16,7 @@ from mispfleet.models.attribute import MISPAttribute
 from mispfleet.models.event import MISPEvent
 from mispfleet.models.query import SearchQuery
 from mispfleet.models.server import ServerConfig
+from mispfleet.observability import MetricsSink
 
 
 class EventsNamespace:
@@ -148,11 +149,12 @@ class MispClient:
         api_key: str | None = None,
         resolver: CredentialResolver | None = None,
         transport: AsyncTransport | None = None,
+        metrics: MetricsSink | None = None,
     ) -> None:
         self.config = config
         if transport is None:
             key = api_key or (resolver or default_resolver()).resolve(config.credential)
-            transport = AsyncTransport(config, key)
+            transport = AsyncTransport(config, key, metrics=metrics)
         self._transport = transport
         self.events = EventsNamespace(transport)
         self.attributes = AttributesNamespace(transport)

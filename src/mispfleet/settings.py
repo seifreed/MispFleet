@@ -37,6 +37,10 @@ class FleetDefaults(BaseModel):
     request_timeout: float = Field(default=60.0, gt=0.0)
     connect_timeout: float = Field(default=10.0, gt=0.0)
     concurrency: int = Field(default=5, ge=1)
+    http2: bool = False
+    max_keepalive_connections: int | None = Field(default=None, ge=1)
+    keepalive_expiry: float | None = Field(default=None, gt=0.0)
+    max_response_bytes: int = Field(default=50_000_000, ge=1)
 
 
 class StateSettings(BaseModel):

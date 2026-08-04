@@ -33,6 +33,7 @@ from mispfleet.models.result import (
 )
 from mispfleet.models.server import ServerConfig
 from mispfleet.models.sync import SyncJobSpec, SyncPlan, SyncResult
+from mispfleet.observability import MetricsSink
 from mispfleet.policies.base import PolicySpec
 from mispfleet.policies.engine import PolicyEngine
 from mispfleet.services.copy import apply_copy_plan, build_copy_plan
@@ -55,6 +56,7 @@ class MispFleet:
         resolver: CredentialResolver | None = None,
         interactive: bool = True,
         state: StateBackend | None = None,
+        metrics: MetricsSink | None = None,
     ) -> None:
         self.registry = ServerRegistry(servers)
         self.policies = dict(policies or {})
@@ -64,6 +66,7 @@ class MispFleet:
         self._executor = FleetExecutor()
         self._clients: dict[str, MispClient] = {}
         self._state = state
+        self._metrics = metrics or MetricsSink()
 
     @classmethod
     async def from_file(
@@ -73,10 +76,13 @@ class MispFleet:
         resolver: CredentialResolver | None = None,
         interactive: bool = True,
         state: StateBackend | None = None,
+        metrics: MetricsSink | None = None,
     ) -> MispFleet:
         """Build a fleet from a configuration file."""
         config = load_fleet_config(path, profile)
-        return cls.from_config(config, resolver=resolver, interactive=interactive, state=state)
+        return cls.from_config(
+            config, resolver=resolver, interactive=interactive, state=state, metrics=metrics
+        )
 
     @classmethod
     def from_config(
@@ -85,6 +91,7 @@ class MispFleet:
         resolver: CredentialResolver | None = None,
         interactive: bool = True,
         state: StateBackend | None = None,
+        metrics: MetricsSink | None = None,
     ) -> MispFleet:
         """Build a fleet from an already validated configuration."""
         return cls(
@@ -94,12 +101,15 @@ class MispFleet:
             resolver=resolver,
             interactive=interactive,
             state=state,
+            metrics=metrics,
         )
 
     def client(self, name: str) -> MispClient:
         """Return (and cache) the client for one configured server."""
         if name not in self._clients:
-            self._clients[name] = MispClient(self.registry.get(name), resolver=self._resolver)
+            self._clients[name] = MispClient(
+                self.registry.get(name), resolver=self._resolver, metrics=self._metrics
+            )
         return self._clients[name]
 
     def select(self, selector: ServerSelector | None) -> list[str]:
@@ -160,7 +170,16 @@ class MispFleet:
         async def fetch(page: int, limit: int) -> list[dict[str, Any]]:
             return await client.attributes.search_page(query, page=page, limit=limit)
 
-        return paginate(fetch, page_size=page_size, max_records=query.limit_per_server)
+        def on_page(page: int, records: int) -> None:
+            self._metrics.on_page(server, page, records)
+            self._metrics.on_records(server, records)
+
+        return paginate(
+            fetch,
+            page_size=page_size,
+            max_records=query.limit_per_server,
+            on_page=on_page,
+        )
 
     async def health(
         self,
@@ -170,7 +189,9 @@ class MispFleet:
         """Check the health of every selected server."""
 
         async def per_server(name: str) -> ServerHealth:
-            return await check_server(self.client(name))
+            result = await check_server(self.client(name))
+            self._metrics.on_availability(name, result.reachable)
+            return result
 
         envelope = await self._executor.run(self.select(selector), per_server, execution)
         return FleetHealthResult(**envelope.model_dump())
@@ -239,7 +260,7 @@ class MispFleet:
         """Build a reviewable copy plan; the destination is never mutated."""
         self.registry.get(source)
         self.registry.get(destination)
-        return await build_copy_plan(
+        plan = await build_copy_plan(
             self.client(source),
             self.client(destination),
             str(event_id),
@@ -247,6 +268,11 @@ class MispFleet:
             policy=policy,
             on_conflict=on_conflict,
         )
+        if any(issue.code == "policy-violation" for issue in plan.blocking_errors):
+            self._metrics.on_policy_rejection(policy or "")
+        if plan.blocking_errors:
+            self._metrics.on_plan_validation_failure(plan.kind)
+        return plan
 
     async def apply(self, plan: CopyPlan) -> ApplyResult:
         """Re-validate and apply a plan, recording an audit trail."""

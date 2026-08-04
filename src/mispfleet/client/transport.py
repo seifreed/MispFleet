@@ -30,9 +30,8 @@ from mispfleet.exceptions import (
 )
 from mispfleet.logging import get_logger
 from mispfleet.models.server import ServerConfig
+from mispfleet.observability import MetricsSink, current_operation_id
 from mispfleet.redaction import redact_text
-
-DEFAULT_MAX_RESPONSE_BYTES = 50 * 1024 * 1024
 
 logger = get_logger("client.transport")
 
@@ -73,11 +72,13 @@ class AsyncTransport:
         self,
         config: ServerConfig,
         api_key: str,
-        max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
+        max_response_bytes: int | None = None,
+        metrics: MetricsSink | None = None,
     ) -> None:
         self._config = config
         self._api_key = api_key
-        self._max_response_bytes = max_response_bytes
+        self._max_response_bytes = max_response_bytes or config.max_response_bytes
+        self._metrics = metrics or MetricsSink()
         self._semaphore = asyncio.Semaphore(config.concurrency)
         self._rate_lock = asyncio.Lock()
         self._min_interval = 1.0 / config.rate_limit if config.rate_limit else 0.0
@@ -94,7 +95,12 @@ class AsyncTransport:
             verify=build_verify(config),
             proxy=config.proxy,
             timeout=httpx.Timeout(config.request_timeout, connect=config.connect_timeout),
-            limits=httpx.Limits(max_connections=config.concurrency),
+            limits=httpx.Limits(
+                max_connections=config.concurrency,
+                max_keepalive_connections=config.max_keepalive_connections,
+                keepalive_expiry=config.keepalive_expiry,
+            ),
+            http2=config.http2,
             follow_redirects=False,
         )
 
@@ -125,6 +131,7 @@ class AsyncTransport:
                 if not error.context.retryable or attempt >= attempts:
                     raise
                 delay = self._backoff_delay(attempt, error)
+                self._metrics.on_retry(self._config.name, path)
                 logger.debug(
                     "retrying %s %s on %s (attempt %d, delay %.2fs)",
                     method,
@@ -158,10 +165,23 @@ class AsyncTransport:
                 await asyncio.sleep(wait)
             self._last_request_at = loop.time()
 
+    def _log_context(self, path: str, request_id: str) -> dict[str, str]:
+        context = {
+            "server": self._config.name,
+            "endpoint": path,
+            "request_id": request_id,
+        }
+        operation_id = current_operation_id.get()
+        if operation_id is not None:
+            context["operation_id"] = operation_id
+        return context
+
     async def _send_once(self, method: str, path: str, json_body: dict[str, Any] | None) -> Any:
         async with self._semaphore:
             await self._throttle()
             request_id = uuid4().hex
+            loop = asyncio.get_running_loop()
+            started = loop.time()
             try:
                 response = await self._client.request(
                     method,
@@ -170,25 +190,39 @@ class AsyncTransport:
                     headers={"X-MispFleet-Request-ID": request_id},
                 )
             except httpx.TimeoutException as error:
+                self._metrics.on_error(self._config.name, path, "timeout")
                 raise RequestTimeoutError(
                     f"request to {self._config.name} timed out",
                     self._context(path, request_id, retryable=True),
                 ) from error
             except httpx.ConnectError as error:
                 if _is_tls_failure(error):
+                    self._metrics.on_error(self._config.name, path, "tls")
                     raise TLSVerificationError(
                         f"TLS verification failed for {self._config.name}",
                         self._context(path, request_id, retryable=False),
                     ) from error
+                self._metrics.on_error(self._config.name, path, "connection")
                 raise ConnectionFailedError(
                     f"connection to {self._config.name} failed",
                     self._context(path, request_id, retryable=True),
                 ) from error
             except httpx.HTTPError as error:
+                self._metrics.on_error(self._config.name, path, "transport")
                 raise ConnectionFailedError(
                     f"transport failure talking to {self._config.name}: {type(error).__name__}",
                     self._context(path, request_id, retryable=True),
                 ) from error
+            self._metrics.on_request(
+                self._config.name, path, loop.time() - started, response.status_code
+            )
+            logger.debug(
+                "%s %s -> %d",
+                method,
+                path,
+                response.status_code,
+                extra=self._log_context(path, request_id),
+            )
         if len(response.content) > self._max_response_bytes:
             raise ResponseTooLargeError(
                 f"response from {self._config.name} exceeds " f"{self._max_response_bytes} bytes",
