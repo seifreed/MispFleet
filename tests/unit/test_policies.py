@@ -5,10 +5,11 @@ from __future__ import annotations
 import pytest
 
 from mispfleet.exceptions import PolicyConfigurationError
-from mispfleet.models.attribute import MISPAttribute
+from mispfleet.models.attribute import MISPAttribute, MISPObject
 from mispfleet.models.event import MISPEvent
 from mispfleet.policies.base import PolicyContext, PolicySpec, RejectRules
 from mispfleet.policies.engine import PolicyEngine
+from mispfleet.redaction import REDACTED
 from tests.support import contains, eq, not_contains, ok
 
 CONTEXT = PolicyContext(policy_name="p", source_server="research", destination_server="production")
@@ -147,3 +148,108 @@ async def test_policy_noop_branches_leave_event_untouched() -> None:
     result = await engine(p=spec).apply("p", CONTEXT, event())
     ok(result.accepted)
     eq(result.transformations, [])
+
+
+async def test_policy_maps_redacts_rejects_and_limits() -> None:
+    spec = PolicySpec(
+        organisation_map={"CIRCL": "Partner"},
+        sharing_group_map={"1": "9"},
+        set_to_ids=True,
+        redact_values=[r"^198\.51\."],
+        reject_attribute_types={"passport-number"},
+        max_attachment_bytes=4,
+    )
+    base = event(
+        orgc="CIRCL",
+        orgc_uuid="org-uuid",
+        sharing_group_id="1",
+        attributes=[
+            MISPAttribute(type="domain", value="evil.example"),
+            MISPAttribute(type="ip-src", value="198.51.100.7"),
+            MISPAttribute(type="passport-number", value="X1"),
+            MISPAttribute(
+                type="attachment", value="a.bin", data="QUJDREVGR0g=", sharing_group_id="1"
+            ),
+        ],
+        objects=[
+            MISPObject(
+                name="file",
+                sharing_group_id="1",
+                attributes=[MISPAttribute(type="malware-sample", value="s", data="QUJD")],
+            )
+        ],
+    )
+    result = await engine(p=spec).apply("p", CONTEXT, base)
+    ok(result.accepted)
+    transformed = result.transformed_event
+    ok(transformed is not None)
+    if transformed is None:
+        return
+    eq(transformed.orgc, "Partner")
+    eq(transformed.orgc_uuid, None)
+    eq(transformed.sharing_group_id, "9")
+    eq(transformed.objects[0].sharing_group_id, "9")
+    by_type = {a.type: a for a in transformed.attributes}
+    not_contains(by_type, "passport-number")
+    eq(by_type["attachment"].sharing_group_id, "9")
+    eq(by_type["ip-src"].value, REDACTED)
+    ok(all(a.to_ids for a in transformed.attributes))
+    eq(by_type["attachment"].data, None)
+    eq(transformed.objects[0].attributes[0].data, "QUJD")
+    actions = {t.action for t in result.transformations}
+    eq(
+        actions,
+        {
+            "map-organisation",
+            "map-sharing-group",
+            "set-to-ids",
+            "redact-value",
+            "reject-attributes",
+            "limit-attachment",
+        },
+    )
+    messages = [w.message for w in result.warnings]
+    ok(any("rejected by type" in m for m in messages))
+    ok(any("size limit" in m for m in messages))
+
+
+async def test_policy_new_operations_no_change_branches() -> None:
+    spec = PolicySpec(
+        organisation_map={"CIRCL": "CIRCL"},
+        sharing_group_map={"1": "1"},
+        set_to_ids=False,
+        redact_values=[r".*"],
+        reject_attribute_types={"never-present"},
+        max_attachment_bytes=100,
+    )
+    base = event(
+        orgc="CIRCL",
+        sharing_group_id="1",
+        attributes=[
+            MISPAttribute(type="domain", value=REDACTED),
+            MISPAttribute(type="attachment", value=REDACTED, data="QUJD"),
+        ],
+        tags=set(),
+    )
+    result = await engine(p=spec).apply("p", CONTEXT, base)
+    ok(result.accepted)
+    eq(result.transformations, [])
+    eq(result.warnings, [])
+
+
+async def test_policy_rejects_unsupported_objects() -> None:
+    spec = PolicySpec(allowed_object_names={"file"})
+    base = event(objects=[MISPObject(name="file"), MISPObject(name="custom-widget")])
+    result = await engine(p=spec).apply("p", CONTEXT, base)
+    ok(not result.accepted)
+    eq(result.violations[0].rule, "allowed_object_names")
+    contains(result.violations[0].message, "custom-widget")
+    allowed = await engine(p=spec).apply("p", CONTEXT, event(objects=[MISPObject(name="file")]))
+    ok(allowed.accepted)
+
+
+def test_engine_rejects_invalid_redact_pattern() -> None:
+    bad = PolicySpec(redact_values=["["])
+    with pytest.raises(PolicyConfigurationError) as invalid:
+        engine(bad=bad).get("bad")
+    contains(str(invalid.value), "redact_values")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from mispfleet.exceptions import PolicyConfigurationError
 from mispfleet.models.event import MISPEvent
 from mispfleet.policies.base import PolicyContext, PolicyResult, PolicySpec
@@ -27,7 +29,7 @@ class PolicyEngine:
         return ConfigPolicy(name, spec)
 
     def validate_spec(self, name: str, spec: PolicySpec) -> None:
-        """Reject specs referencing unknown distribution levels."""
+        """Reject specs with unknown distribution levels or invalid patterns."""
         if (
             spec.maximum_distribution is not None
             and spec.maximum_distribution not in DISTRIBUTION_LEVELS
@@ -37,6 +39,13 @@ class PolicyEngine:
                 f"{spec.maximum_distribution!r}; expected one of "
                 f"{sorted(DISTRIBUTION_LEVELS)}"
             )
+        for pattern in spec.redact_values:
+            try:
+                re.compile(pattern)
+            except re.error as error:
+                raise PolicyConfigurationError(
+                    f"policy {name!r}: invalid redact_values pattern {pattern!r}: {error}"
+                ) from error
 
     async def apply(
         self,

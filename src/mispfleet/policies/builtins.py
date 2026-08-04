@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterator
+
+from mispfleet.models.attribute import MISPAttribute, MISPObject
 from mispfleet.models.event import MISPEvent
 from mispfleet.models.plan import Transformation
 from mispfleet.policies.base import (
@@ -11,6 +15,7 @@ from mispfleet.policies.base import (
     PolicyViolation,
     PolicyWarning,
 )
+from mispfleet.redaction import REDACTED
 
 DISTRIBUTION_LEVELS = {
     "organisation": 0,
@@ -18,6 +23,129 @@ DISTRIBUTION_LEVELS = {
     "connected-communities": 2,
     "all-communities": 3,
 }
+
+
+def _all_attributes(event: MISPEvent) -> Iterator[MISPAttribute]:
+    """Yield event-level attributes followed by every object attribute."""
+    yield from event.attributes
+    for obj in event.objects:
+        yield from obj.attributes
+
+
+def _attachment_size(data: str) -> int:
+    """Approximate decoded size of a base64 attachment without decoding it."""
+    return (len(data) * 3) // 4
+
+
+def _apply_organisation_map(
+    spec: PolicySpec, event: MISPEvent, transformations: list[Transformation]
+) -> None:
+    mapped = spec.organisation_map.get(event.orgc or "")
+    if mapped is not None and event.orgc != mapped:
+        transformations.append(
+            Transformation(action="map-organisation", target=str(event.orgc), detail=mapped)
+        )
+        event.orgc = mapped
+        event.orgc_uuid = None
+
+
+def _apply_sharing_group_map(
+    spec: PolicySpec, event: MISPEvent, transformations: list[Transformation]
+) -> None:
+    holders: list[tuple[str, MISPEvent | MISPAttribute | MISPObject]] = [("event", event)]
+    holders.extend((f"attribute:{a.type}", a) for a in _all_attributes(event))
+    holders.extend((f"object:{obj.name}", obj) for obj in event.objects)
+    for label, holder in holders:
+        mapped = spec.sharing_group_map.get(holder.sharing_group_id or "")
+        if mapped is not None and holder.sharing_group_id != mapped:
+            holder.sharing_group_id = mapped
+            transformations.append(
+                Transformation(action="map-sharing-group", target=label, detail=mapped)
+            )
+
+
+def _apply_set_to_ids(
+    spec: PolicySpec, event: MISPEvent, transformations: list[Transformation]
+) -> None:
+    if spec.set_to_ids is None:
+        return
+    changed = [a for a in _all_attributes(event) if a.to_ids != spec.set_to_ids]
+    for attribute in changed:
+        attribute.to_ids = spec.set_to_ids
+    if changed:
+        transformations.append(
+            Transformation(
+                action="set-to-ids",
+                target=f"{len(changed)} attribute(s)",
+                detail=str(spec.set_to_ids),
+            )
+        )
+
+
+def _apply_redactions(
+    spec: PolicySpec, event: MISPEvent, transformations: list[Transformation]
+) -> None:
+    patterns = [re.compile(pattern) for pattern in spec.redact_values]
+    for attribute in _all_attributes(event):
+        if attribute.value != REDACTED and any(p.search(attribute.value) for p in patterns):
+            attribute.value = REDACTED
+            transformations.append(
+                Transformation(
+                    action="redact-value",
+                    target=attribute.type,
+                    detail="policy redact_values",
+                )
+            )
+
+
+def _apply_attribute_rejections(
+    spec: PolicySpec,
+    event: MISPEvent,
+    transformations: list[Transformation],
+    warnings: list[PolicyWarning],
+) -> None:
+    if not spec.reject_attribute_types:
+        return
+    kept = [a for a in event.attributes if a.type not in spec.reject_attribute_types]
+    rejected = len(event.attributes) - len(kept)
+    if rejected:
+        event.attributes = kept
+        transformations.append(
+            Transformation(
+                action="reject-attributes",
+                target=",".join(sorted(spec.reject_attribute_types)),
+                detail=f"rejected {rejected} attribute(s)",
+            )
+        )
+        warnings.append(PolicyWarning(message=f"{rejected} attribute(s) rejected by type"))
+
+
+def _apply_attachment_limits(
+    spec: PolicySpec,
+    event: MISPEvent,
+    transformations: list[Transformation],
+    warnings: list[PolicyWarning],
+) -> None:
+    if spec.max_attachment_bytes is None:
+        return
+    for attribute in _all_attributes(event):
+        if attribute.data is None:
+            continue
+        size = _attachment_size(attribute.data)
+        if size > spec.max_attachment_bytes:
+            attribute.data = None
+            transformations.append(
+                Transformation(
+                    action="limit-attachment",
+                    target=attribute.type,
+                    detail=f"{size} bytes exceeds {spec.max_attachment_bytes}",
+                )
+            )
+            warnings.append(
+                PolicyWarning(
+                    message=f"attachment on {attribute.type} attribute exceeded size limit"
+                )
+            )
 
 
 class ConfigPolicy:
@@ -55,6 +183,15 @@ class ConfigPolicy:
             violations.append(
                 PolicyViolation(rule="required_tags", message=f"missing required tag {tag!r}")
             )
+        if spec.allowed_object_names:
+            object_names = {obj.name for obj in transformed.objects}
+            for name in sorted(object_names - spec.allowed_object_names):
+                violations.append(
+                    PolicyViolation(
+                        rule="allowed_object_names",
+                        message=f"event contains unsupported object {name!r}",
+                    )
+                )
         if violations:
             return PolicyResult(accepted=False, violations=violations, warnings=warnings)
 
@@ -127,6 +264,12 @@ class ConfigPolicy:
                 warnings.append(
                     PolicyWarning(message="event has no distribution; maximum not enforced")
                 )
+        _apply_organisation_map(spec, transformed, transformations)
+        _apply_sharing_group_map(spec, transformed, transformations)
+        _apply_set_to_ids(spec, transformed, transformations)
+        _apply_redactions(spec, transformed, transformations)
+        _apply_attribute_rejections(spec, transformed, transformations, warnings)
+        _apply_attachment_limits(spec, transformed, transformations, warnings)
         return PolicyResult(
             accepted=True,
             transformed_event=transformed,

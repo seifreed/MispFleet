@@ -30,8 +30,15 @@ class PolicySpec(BaseModel):
     rename_tags: dict[str, str] = Field(default_factory=dict)
     required_tags: set[str] = Field(default_factory=set)
     remove_attribute_types: set[str] = Field(default_factory=set)
+    reject_attribute_types: set[str] = Field(default_factory=set)
     remove_comments: bool = False
     set_published: bool | None = None
+    set_to_ids: bool | None = None
+    redact_values: list[str] = Field(default_factory=list)
+    organisation_map: dict[str, str] = Field(default_factory=dict)
+    sharing_group_map: dict[str, str] = Field(default_factory=dict)
+    allowed_object_names: set[str] = Field(default_factory=set)
+    max_attachment_bytes: int | None = Field(default=None, ge=1)
     reject_if: RejectRules = Field(default_factory=RejectRules)
 
 
