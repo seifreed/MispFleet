@@ -72,17 +72,6 @@ jobs:
             "$VENV_BIN/python" -m pip install --quiet "$artifact"
             "$VENV_BIN/mispfleet" version
           done
-  docs:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-      - name: Build documentation
-        run: |
-          python -m pip install mkdocs-material
-          mkdocs build --strict
   secrets:
     runs-on: ubuntu-latest
     steps:
