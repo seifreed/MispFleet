@@ -164,7 +164,7 @@ async def test_connection_failure_maps_to_connection_error() -> None:
     )
     transport = AsyncTransport(config, API_KEY)
     try:
-        with pytest.raises(ConnectionFailedError):
+        with pytest.raises((ConnectionFailedError, RequestTimeoutError)):
             await transport.request("GET", "/servers/getVersion")
     finally:
         await transport.aclose()

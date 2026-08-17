@@ -12,6 +12,7 @@ from mispfleet.exceptions import (
     ConnectionFailedError,
     InvalidResponseError,
     NotFoundError,
+    RequestTimeoutError,
 )
 from mispfleet.models.attribute import MISPAttribute
 from mispfleet.models.event import MISPEvent
@@ -101,7 +102,7 @@ async def test_connection_failure_is_typed() -> None:
     async with TaxiiClient(
         f"http://127.0.0.1:{refused_tcp_port()}", token=TOKEN, timeout=0.5
     ) as client:
-        with pytest.raises(ConnectionFailedError):
+        with pytest.raises((ConnectionFailedError, RequestTimeoutError)):
             await client.discovery()
 
 

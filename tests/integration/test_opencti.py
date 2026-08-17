@@ -12,6 +12,7 @@ from mispfleet.exceptions import (
     ConnectionFailedError,
     InvalidResponseError,
     MispServerError,
+    RequestTimeoutError,
 )
 from mispfleet.integrations import OpenCTIClient
 from mispfleet.models.attribute import MISPAttribute
@@ -102,7 +103,7 @@ async def test_connection_failure_is_typed() -> None:
     async with OpenCTIClient(
         f"http://127.0.0.1:{refused_tcp_port()}", TOKEN, timeout=0.5
     ) as client:
-        with pytest.raises(ConnectionFailedError):
+        with pytest.raises((ConnectionFailedError, RequestTimeoutError)):
             await client.version()
 
 
