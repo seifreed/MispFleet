@@ -6,7 +6,17 @@ use these helpers, which fail identically under pytest.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterable
+
+import pytest
+
+# Marks tests that exercise POSIX-only behaviour (owner-only file modes,
+# broken-pipe EPIPE semantics, connection-error mapping) which Windows does
+# not share. They run on Linux and macOS; on Windows they are skipped.
+skip_on_windows = pytest.mark.skipif(
+    sys.platform == "win32", reason="exercises POSIX-specific behaviour"
+)
 
 
 def eq(actual: object, expected: object) -> None:

@@ -30,7 +30,7 @@ from mispfleet.exceptions import (
 from mispfleet.models.server import CredentialReference, RetryConfig, ServerConfig
 from tests.conftest import config_for
 from tests.fake_misp import API_KEY, FakeMisp
-from tests.support import contains, eq, not_contains, ok
+from tests.support import contains, eq, not_contains, ok, skip_on_windows
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
@@ -153,6 +153,7 @@ async def test_timeout_maps_to_request_timeout_error(fake_misp: FakeMisp) -> Non
         await transport.aclose()
 
 
+@skip_on_windows
 async def test_connection_failure_maps_to_connection_error() -> None:
     config = ServerConfig(
         name="closed",

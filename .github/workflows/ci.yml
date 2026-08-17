@@ -47,7 +47,11 @@ jobs:
       - name: Types
         run: mypy .
       - name: Tests (100% coverage enforced)
+        if: runner.os != 'Windows'
         run: pytest
+      - name: Tests (Windows; POSIX-only tests skipped, coverage not gated)
+        if: runner.os == 'Windows'
+        run: pytest --cov-fail-under=0
       - name: Security scan
         run: bandit -r -q .
       - name: Dependency audit

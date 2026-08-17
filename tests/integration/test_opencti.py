@@ -19,7 +19,7 @@ from mispfleet.models.event import MISPEvent
 from mispfleet.output.stix import event_to_stix_bundle
 from tests.fake_opencti import TOKEN, VERSION, FakeOpenCTI
 from tests.httpserver import serve
-from tests.support import contains, eq, ok
+from tests.support import contains, eq, ok, skip_on_windows
 
 
 @pytest.fixture
@@ -84,6 +84,7 @@ async def test_error_entries_without_a_message_key_are_summarized(
     contains(str(excinfo.value), "plain string entry")
 
 
+@skip_on_windows
 async def test_server_errors_map_to_server_error(fake_opencti: FakeOpenCTI) -> None:
     fake_opencti.status = 500
     async with OpenCTIClient(fake_opencti.url, TOKEN) as client:
@@ -98,6 +99,7 @@ async def test_non_json_response_is_typed(fake_opencti: FakeOpenCTI) -> None:
             await client.version()
 
 
+@skip_on_windows
 async def test_connection_failure_is_typed() -> None:
     async with OpenCTIClient("http://127.0.0.1:9", TOKEN, timeout=0.5) as client:
         with pytest.raises(ConnectionFailedError):

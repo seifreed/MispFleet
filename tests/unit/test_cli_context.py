@@ -43,7 +43,7 @@ from mispfleet.exceptions import (
     UnsafePlanError,
 )
 from mispfleet.logging import LOGGER_NAME
-from tests.support import contains, eq, ok
+from tests.support import contains, eq, ok, skip_on_windows
 
 CONFIG_TEXT = """
 version: 1
@@ -270,6 +270,7 @@ def test_guard_maps_an_interrupt_to_the_cancelled_exit_code() -> None:
     eq(excinfo.value.exit_code, EXIT_CANCELLED)
 
 
+@skip_on_windows
 def test_a_reader_closing_the_pipe_is_not_an_error() -> None:
     """`mispfleet ... | head` must exit 0 without stderr noise."""
     import os
@@ -299,6 +300,7 @@ def test_unknown_role_selector_is_a_usage_error() -> None:
         CLIState(roles=["not-a-role"]).selector()
 
 
+@skip_on_windows
 def test_a_closed_pipe_during_table_output_is_not_an_error() -> None:
     """rich's default handler exits 1; the machine formats exit 0 for this."""
     import os

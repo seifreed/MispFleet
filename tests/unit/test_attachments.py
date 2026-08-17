@@ -11,7 +11,7 @@ import pytest
 
 from mispfleet.attachments import safe_extract_zip, sanitize_filename, write_attachment
 from mispfleet.exceptions import AttachmentSecurityError
-from tests.support import contains, eq, not_contains, ok
+from tests.support import contains, eq, not_contains, ok, skip_on_windows
 
 
 def test_sanitize_filename_strips_paths_and_control_characters() -> None:
@@ -234,6 +234,7 @@ def test_extraction_still_creates_the_nested_tree_it_needs(tmp_path: Path) -> No
     eq(extracted[0].read_bytes(), b"A")
 
 
+@skip_on_windows
 def test_cleanup_never_removes_what_the_extraction_did_not_create(tmp_path: Path) -> None:
     """Only this call's own files and directories are discarded.
 

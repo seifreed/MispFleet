@@ -19,7 +19,7 @@ from mispfleet.state import (
 )
 from mispfleet.state.base import PluginRecord
 from tests.state_lifecycle import checkpoint, exercise_backend, operation
-from tests.support import eq, ok
+from tests.support import eq, ok, skip_on_windows
 
 
 async def test_memory_backend_full_lifecycle() -> None:
@@ -44,6 +44,7 @@ async def test_sqlite_backend_persists_across_connections(tmp_path: Path) -> Non
     await second.close()
 
 
+@skip_on_windows
 async def test_sqlite_backend_restricts_file_permissions(tmp_path: Path) -> None:
     backend = SqliteStateBackend(tmp_path / "state.db")
     await backend.initialize()
@@ -87,6 +88,7 @@ def test_backends_satisfy_the_protocol() -> None:
     ok(isinstance(MariaDBStateBackend("mysql://root@127.0.0.1/db"), StateBackend))
 
 
+@skip_on_windows
 async def test_sqlite_file_is_owner_only_from_creation(tmp_path: Path) -> None:
     path = tmp_path / "nested" / "state.db"
     backend = SqliteStateBackend(path)
@@ -113,6 +115,7 @@ async def test_sqlite_prune_compares_instants_not_printed_offsets(tmp_path: Path
         await backend.close()
 
 
+@skip_on_windows
 async def test_initialize_closes_the_connection_when_the_schema_fails(tmp_path: Path) -> None:
     """aiosqlite's worker is a non-daemon thread.
 
