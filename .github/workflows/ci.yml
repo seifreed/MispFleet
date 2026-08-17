@@ -51,7 +51,12 @@ jobs:
         run: pytest
       - name: Tests (Windows; POSIX-only tests skipped, coverage not gated)
         if: runner.os == 'Windows'
-        run: pytest --cov-fail-under=0
+        # The threaded localhost fake servers occasionally reset a connection
+        # under Windows' socket stack (an httpx ReadError on a different test
+        # each run), so flaky failures are retried; coverage is not gated here.
+        run: |
+          python -m pip install pytest-rerunfailures
+          pytest --cov-fail-under=0 --reruns 3 --reruns-delay 2 --only-rerun ReadError --only-rerun ConnectionError --only-rerun RequestTimeoutError
       - name: Security scan
         run: bandit -r -q .
       - name: Dependency audit
