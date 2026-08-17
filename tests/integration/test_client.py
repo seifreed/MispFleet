@@ -17,7 +17,7 @@ from mispfleet.models.event import MISPEvent
 from mispfleet.models.query import SearchQuery
 from tests.conftest import config_for
 from tests.fake_misp import API_KEY, FakeMisp
-from tests.support import contains, eq, ne, ok, skip_on_windows
+from tests.support import contains, eq, ne, ok
 
 RAW_EVENT: dict[str, Any] = {
     "id": "7",
@@ -279,7 +279,6 @@ async def test_client_galaxy_lifecycle(fake_misp: FakeMisp) -> None:
             await client.galaxies.delete("1")
 
 
-@skip_on_windows
 async def test_client_galaxy_cluster_attach_to_event(fake_misp: FakeMisp) -> None:
     fake_misp.add_event(dict(RAW_EVENT))
     fake_misp.clusters = [{"id": "5", "galaxy_id": "1", "value": "APT-X"}]

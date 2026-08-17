@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import stat
+import sys
 import threading
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
@@ -19,7 +20,7 @@ from mispfleet.state import (
 )
 from mispfleet.state.base import PluginRecord
 from tests.state_lifecycle import checkpoint, exercise_backend, operation
-from tests.support import eq, ok, skip_on_windows
+from tests.support import eq, ok
 
 
 async def test_memory_backend_full_lifecycle() -> None:
@@ -44,12 +45,15 @@ async def test_sqlite_backend_persists_across_connections(tmp_path: Path) -> Non
     await second.close()
 
 
-@skip_on_windows
 async def test_sqlite_backend_restricts_file_permissions(tmp_path: Path) -> None:
     backend = SqliteStateBackend(tmp_path / "state.db")
     await backend.initialize()
-    mode = stat.S_IMODE(backend.path.stat().st_mode)
-    eq(mode, 0o600)
+    # POSIX enforces owner-only via the file mode; on Windows the file inherits
+    # the user-profile directory's ACL, so we only assert it was created.
+    if sys.platform == "win32":
+        ok(backend.path.exists())
+    else:
+        eq(stat.S_IMODE(backend.path.stat().st_mode), 0o600)
     eq(backend.location, str(backend.path))
     await backend.close()
 
@@ -88,13 +92,15 @@ def test_backends_satisfy_the_protocol() -> None:
     ok(isinstance(MariaDBStateBackend("mysql://root@127.0.0.1/db"), StateBackend))
 
 
-@skip_on_windows
 async def test_sqlite_file_is_owner_only_from_creation(tmp_path: Path) -> None:
     path = tmp_path / "nested" / "state.db"
     backend = SqliteStateBackend(path)
     await backend.initialize()
     try:
-        eq(path.stat().st_mode & 0o777, 0o600)
+        if sys.platform == "win32":
+            ok(path.exists())
+        else:
+            eq(path.stat().st_mode & 0o777, 0o600)
     finally:
         await backend.close()
 
@@ -115,7 +121,6 @@ async def test_sqlite_prune_compares_instants_not_printed_offsets(tmp_path: Path
         await backend.close()
 
 
-@skip_on_windows
 async def test_initialize_closes_the_connection_when_the_schema_fails(tmp_path: Path) -> None:
     """aiosqlite's worker is a non-daemon thread.
 
@@ -124,10 +129,14 @@ async def test_initialize_closes_the_connection_when_the_schema_fails(tmp_path: 
     """
     corrupt = tmp_path / "corrupt.db"
     corrupt.write_bytes(b"this is definitely not a sqlite database" * 8)
+    # Delta against a baseline: Windows' event loop keeps extra worker threads
+    # alive, so the absolute count is not 1 there — the invariant is that the
+    # failed initialize leaks none of its own.
+    baseline = threading.active_count()
     backend = SqliteStateBackend(corrupt)
     with pytest.raises(sqlite3.DatabaseError):
         await backend.initialize()
-    eq(threading.active_count(), 1)
+    eq(threading.active_count(), baseline)
     with pytest.raises(StateError):
         await backend.list_checkpoints()
 

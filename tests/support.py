@@ -6,17 +6,20 @@ use these helpers, which fail identically under pytest.
 
 from __future__ import annotations
 
-import sys
+import socket
 from collections.abc import Iterable
 
-import pytest
 
-# Marks tests that exercise POSIX-only behaviour (owner-only file modes,
-# broken-pipe EPIPE semantics, connection-error mapping) which Windows does
-# not share. They run on Linux and macOS; on Windows they are skipped.
-skip_on_windows = pytest.mark.skipif(
-    sys.platform == "win32", reason="exercises POSIX-specific behaviour"
-)
+def refused_tcp_port() -> int:
+    """A localhost TCP port with nothing listening, so a connect is refused.
+
+    Binding then closing frees the port on every platform, so a subsequent
+    connect gets a refused error (rather than the timeout Windows returns for
+    a filtered port such as the classic discard port 9).
+    """
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
 
 
 def eq(actual: object, expected: object) -> None:

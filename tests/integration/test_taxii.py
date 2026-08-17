@@ -19,7 +19,7 @@ from mispfleet.output.stix import event_to_stix_bundle
 from mispfleet.services.taxii import TaxiiClient
 from tests.fake_taxii import API_ROOT, COLLECTION_ID, TOKEN, FakeTaxii
 from tests.httpserver import serve
-from tests.support import contains, eq, ok, skip_on_windows
+from tests.support import contains, eq, ok, refused_tcp_port
 
 
 @pytest.fixture
@@ -97,9 +97,10 @@ async def test_unknown_collection_path_is_not_found(fake_taxii: FakeTaxii) -> No
             await client.push("other-root", "ghost", sample_bundle())
 
 
-@skip_on_windows
 async def test_connection_failure_is_typed() -> None:
-    async with TaxiiClient("http://127.0.0.1:9", token=TOKEN, timeout=0.5) as client:
+    async with TaxiiClient(
+        f"http://127.0.0.1:{refused_tcp_port()}", token=TOKEN, timeout=0.5
+    ) as client:
         with pytest.raises(ConnectionFailedError):
             await client.discovery()
 

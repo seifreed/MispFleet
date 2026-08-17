@@ -25,7 +25,7 @@ from tests.fake_opencti import FakeOpenCTI
 from tests.fake_taxii import COLLECTION_ID as TAXII_COLLECTION
 from tests.fake_taxii import TOKEN as TAXII_TOKEN
 from tests.fake_taxii import FakeTaxii
-from tests.support import contains, eq, ne, not_contains, not_none, ok, skip_on_windows
+from tests.support import contains, eq, ne, not_contains, not_none, ok
 
 EVENT_UUID = "9c5c1c2e-0000-4000-8000-00000000000e"
 ENV_KEY = "MISPFLEET_CLI_TEST_KEY"
@@ -124,12 +124,14 @@ def test_rejects_unknown_output_format(env: dict[str, str]) -> None:
     eq(code, 2)
 
 
-@skip_on_windows
 def test_config_lifecycle(tmp_path: Path, env: dict[str, str]) -> None:
     config = tmp_path / "config.yml"
     code, output = invoke(["config", "init"], env, config)
     eq(code, 0)
-    eq(config.stat().st_mode & 0o777, 0o600)
+    if sys.platform == "win32":
+        ok(config.exists())
+    else:
+        eq(config.stat().st_mode & 0o777, 0o600)
     code, _ = invoke(["config", "init"], env, config)
     eq(code, 3)
     code, _ = invoke(["config", "init", "--force"], env, config)
@@ -1670,6 +1672,9 @@ def test_attribute_search_refuses_the_object_name_filter(
     eq(code, 10)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="closing a subprocess pipe early is POSIX-specific"
+)
 def test_attribute_search_treats_a_closed_pipe_as_success(
     cli_servers: tuple[Path, FakeMisp, FakeMisp], env: dict[str, str], tmp_path: Path
 ) -> None:
