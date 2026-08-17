@@ -54,6 +54,32 @@ Credentials    env vars, OS keyring, interactive prompt, in-memory
 
 ---
 
+## Why MispFleet if PyMISP already exists?
+
+[PyMISP](https://github.com/MISP/PyMISP) is the official Python library for MISP, and it is excellent at what it does: a rich, typed object model (`MISPEvent`, `MISPAttribute`, `MISPObject`, …) over the REST API of **one** MISP instance. If you work against a single server, PyMISP is the right tool — and MispFleet does **not** replace it.
+
+MispFleet solves a different problem: **operating many MISP instances as one coordinated fleet.** PyMISP gives you `PyMISP(url, key)`, a single synchronous connection; everything beyond that — iterating over servers, running requests concurrently, aggregating partial failures, preserving provenance, comparing or reconciling instances — is left for you to hand-roll. MispFleet makes that orchestration layer a first-class, typed, tested library.
+
+| | PyMISP (official) | MispFleet |
+|---|---|---|
+| **Scope** | One MISP instance per client | A fleet: many instances with groups, roles, tags |
+| **Transport** | Synchronous (`requests`) ¹ | Asynchronous (`httpx`) with bounded concurrency |
+| **Failures** | Per-call exceptions | Partial-fleet failures as data + failure policies |
+| **Search** | Query one server | Federated search that preserves source provenance |
+| **Compare instances** | — | Deterministic event diff between servers |
+| **Move data safely** | Manual add/update | Two-stage copy: `plan` (credential-free) → `apply` (re-validated) |
+| **Keep instances in sync** | — | Bidirectional sync jobs with conflict-resolution strategies |
+| **Governance** | — | Policy engine (tag / distribution / content) applied on transfer |
+| **State & audit** | — | Durable SQLite / MariaDB checkpoints and audit records |
+| **Interop export** | — | STIX 2.1, TAXII 2.1 push, OpenCTI |
+| **Interface** | Library | CLI **and** typed library |
+
+¹ An experimental `pymisp-async` (aiohttp) exists as a separate project; the mainline PyMISP is synchronous.
+
+In short: **use PyMISP to talk to a MISP instance; use MispFleet to run a set of them.** The two are complementary — MispFleet ships its own async client rather than wrapping PyMISP, but they target different layers of the same problem. For deep single-instance API coverage and MISP's canonical object generators, reach for PyMISP; for fleet-wide search, diffing, governed copy, and synchronization, reach for MispFleet.
+
+---
+
 ## Installation
 
 ### From PyPI (Recommended)
