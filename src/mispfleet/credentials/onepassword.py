@@ -10,6 +10,11 @@ from __future__ import annotations
 import os
 import shutil
 
+# subprocess only ever launches the ``op`` binary resolved through
+# shutil.which, with a fixed argv list and no shell, so there is no shell
+# interpretation and no injection surface.
+import subprocess  # nosec B404
+
 from mispfleet.exceptions import CredentialResolutionError
 
 _KEY_PREFIX = "op://"
@@ -18,13 +23,8 @@ _KEY_PREFIX = "op://"
 class OnePasswordCredentialProvider:
     """Resolves ``op://`` secret references through the 1Password CLI."""
 
-    def __init__(self, executable: str = "op", spawn_supported: bool | None = None) -> None:
+    def __init__(self, executable: str = "op") -> None:
         self._executable = executable
-        # os.posix_spawn and its file actions do not exist on Windows; the
-        # flag is injectable so the unsupported path is exercised anywhere.
-        self._spawn_supported = (
-            hasattr(os, "posix_spawn") if spawn_supported is None else spawn_supported
-        )
 
     def resolve(self, key: str) -> str:
         """Run ``op read`` for ``key`` and return the secret it prints."""
@@ -32,51 +32,33 @@ class OnePasswordCredentialProvider:
             raise CredentialResolutionError(
                 f"1Password references must start with {_KEY_PREFIX!r}, got {key!r}"
             )
-        if not self._spawn_supported:
-            raise CredentialResolutionError(
-                "the 1Password provider needs a POSIX platform; on Windows, "
-                "resolve the secret with 'op read' and pass it through the "
-                "'env' provider instead"
-            )
         executable = shutil.which(self._executable)
         if executable is None:
             raise CredentialResolutionError(
                 f"the 1Password CLI {self._executable!r} was not found on PATH"
             )
-        read_fd, write_fd = os.pipe()
         try:
-            pid = os.posix_spawn(
-                executable,
+            # argv[0] is a full path from shutil.which and there is no shell,
+            # so the op:// reference travels as a plain argument, never as code.
+            completed = subprocess.run(  # nosec B603
                 [executable, "read", key, "--no-newline"],
-                dict(os.environ),
-                file_actions=[
-                    (os.POSIX_SPAWN_DUP2, write_fd, 1),
-                    (os.POSIX_SPAWN_OPEN, 2, os.devnull, os.O_WRONLY, 0o644),
-                ],
+                capture_output=True,
+                env=dict(os.environ),
+                check=False,
             )
         except OSError as error:
-            # `which` found it a moment ago, so a spawn failure here means the
-            # binary lost its exec bit or vanished. The provider contract
-            # promises a typed error, and the read end leaked with the raw one.
-            os.close(read_fd)
+            # `which` found it a moment ago, so a start failure here means the
+            # binary lost its exec bit or vanished; the provider contract
+            # promises a typed error rather than a raw OSError.
             raise CredentialResolutionError(
                 f"the 1Password CLI {self._executable!r} could not be started: {error}"
             ) from error
-        finally:
-            os.close(write_fd)
-        try:
-            chunks = []
-            while chunk := os.read(read_fd, 4096):
-                chunks.append(chunk)
-        finally:
-            os.close(read_fd)
-        _, status = os.waitpid(pid, 0)
-        if os.waitstatus_to_exitcode(status) != 0:
+        if completed.returncode != 0:
             raise CredentialResolutionError(
                 f"the 1Password CLI could not read {key!r}; run 'op read {key}' to diagnose"
             )
         try:
-            secret = b"".join(chunks).decode("utf-8").strip()
+            secret = completed.stdout.decode("utf-8").strip()
         except UnicodeDecodeError as error:
             raise CredentialResolutionError(
                 f"the 1Password CLI returned non-UTF-8 output for {key!r}"

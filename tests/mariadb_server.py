@@ -11,6 +11,7 @@ import os
 import shutil
 import signal
 import socket
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -47,7 +48,13 @@ def _free_port() -> int:
 
 
 def _spawn(argv: list[str]) -> int:
-    """Start a process with stdout/stderr sent to /dev/null."""
+    """Start a process with stdout/stderr sent to /dev/null.
+
+    POSIX-only: the ephemeral server is used for local development, while CI
+    provides a ready server through ``MISPFLEET_TEST_MARIADB_DSN`` instead.
+    """
+    if sys.platform == "win32":
+        raise RuntimeError("the ephemeral MariaDB helper is POSIX-only")
     devnull = os.open(os.devnull, os.O_WRONLY)
     try:
         return os.posix_spawn(

@@ -187,6 +187,8 @@ esac
 
 @pytest.fixture
 def fake_op(tmp_path: Path) -> Iterator[None]:
+    if os.name == "nt":
+        pytest.skip("the op CLI fake is a POSIX shell script")
     executable = tmp_path / "op"
     executable.write_text(FAKE_OP, encoding="utf-8")
     executable.chmod(0o700)
@@ -242,33 +244,22 @@ def test_prompt_provider_reports_unreadable_input() -> None:
     contains(str(excinfo.value), "no input available")
 
 
-def test_onepassword_provider_reports_unsupported_platforms() -> None:
-    """os.posix_spawn does not exist on Windows.
+def test_onepassword_provider_types_a_spawn_failure(tmp_path: Path) -> None:
+    """`which` finds it, then the exec fails: the raw OSError must be typed.
 
-    Calling it there raised AttributeError instead of the typed error the
-    provider protocol promises.
+    A file with an invalid executable format is found on PATH but cannot be
+    started; the provider contract promises a CredentialResolutionError.
     """
-    provider = OnePasswordCredentialProvider(spawn_supported=False)
-    with pytest.raises(CredentialResolutionError) as excinfo:
-        provider.resolve("op://lab/misp/apikey")
-    contains(str(excinfo.value), "POSIX platform")
-
-
-def test_onepassword_provider_types_a_spawn_failure_and_keeps_no_fd(tmp_path: Path) -> None:
-    """`which` finds it, then the spawn fails: the raw OSError escaped.
-
-    The provider contract promises a CredentialResolutionError, and the pipe's
-    read end leaked on that path — one descriptor per attempt.
-    """
+    if os.name == "nt":
+        pytest.skip("an exec-format failure is a POSIX behaviour")
     executable = tmp_path / "op"
     executable.write_bytes(b"\xff\xfe not a program")
     executable.chmod(0o700)
     original = os.environ["PATH"]
     os.environ["PATH"] = f"{tmp_path}{os.pathsep}{original}"
-    before = len(os.listdir("/dev/fd"))
     try:
-        with pytest.raises(CredentialResolutionError):
+        with pytest.raises(CredentialResolutionError) as excinfo:
             OnePasswordCredentialProvider().resolve("op://lab/misp/apikey")
-        eq(len(os.listdir("/dev/fd")), before)
+        contains(str(excinfo.value), "could not be started")
     finally:
         os.environ["PATH"] = original

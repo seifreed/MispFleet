@@ -5,6 +5,10 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+
+# subprocess launches the built mispfleet CLI directly (no shell, argv as a
+# list) to exercise real piped-stdout behaviour.
+import subprocess  # nosec B404
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -21,7 +25,7 @@ from tests.fake_opencti import FakeOpenCTI
 from tests.fake_taxii import COLLECTION_ID as TAXII_COLLECTION
 from tests.fake_taxii import TOKEN as TAXII_TOKEN
 from tests.fake_taxii import FakeTaxii
-from tests.support import contains, eq, ne, not_contains, ok
+from tests.support import contains, eq, ne, not_contains, not_none, ok
 
 EVENT_UUID = "9c5c1c2e-0000-4000-8000-00000000000e"
 ENV_KEY = "MISPFLEET_CLI_TEST_KEY"
@@ -1792,24 +1796,20 @@ def test_a_reader_that_closes_the_pipe_early_still_exits_zero(
     pipe surfaced during interpreter shutdown — past the handler — and the
     command exited 120 for a run that had succeeded.
     """
+    if sys.platform == "win32":
+        pytest.skip("block-buffered pipe and broken-pipe semantics are POSIX")
     config, research, _production = cli_servers
     seed(research)
-    read_fd, write_fd = os.pipe()
     binary = str(Path(sys.executable).parent / "mispfleet")
     child_env = {**os.environ, **env}
-    pid = os.posix_spawn(
-        binary,
+    process = subprocess.Popen(  # nosec B603
         [binary, "--config", str(config), "--server", "research", "attribute", "search"],
-        child_env,
-        file_actions=[
-            (os.POSIX_SPAWN_DUP2, write_fd, 1),
-            (os.POSIX_SPAWN_OPEN, 2, os.devnull, os.O_WRONLY, 0o644),
-        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        env=child_env,
     )
-    os.close(write_fd)
-    os.close(read_fd)  # the reader goes away before the child writes
-    _, status = os.waitpid(pid, 0)
-    eq(os.waitstatus_to_exitcode(status), 0)
+    not_none(process.stdout).close()  # the reader goes away before the child writes
+    eq(process.wait(), 0)
 
 
 def test_attribute_search_reports_an_unwritable_output_as_a_usage_error(
