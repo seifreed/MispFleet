@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import os
 import re
 import sys
@@ -103,6 +104,17 @@ def exit_code_for(error: MispFleetError) -> int:
     if isinstance(error, APIError):
         return EXIT_GENERIC
     return EXIT_GENERIC
+
+
+# A reader closing the pipe raises BrokenPipeError (EPIPE) on POSIX, but on
+# Windows the write fails with OSError(EINVAL) instead, which is not a
+# BrokenPipeError; both mean the same thing: the reader went away.
+_CLOSED_PIPE_ERRNOS = frozenset({errno.EPIPE, errno.EINVAL})
+
+
+def _is_closed_pipe(error: OSError) -> bool:
+    """Whether ``error`` is a reader that closed the pipe, on any platform."""
+    return isinstance(error, BrokenPipeError) or error.errno in _CLOSED_PIPE_ERRNOS
 
 
 class _PipeTolerantConsole(Console):
@@ -271,7 +283,12 @@ class CLIState:
     ) -> None:
         """Emit machine output to stdout/file, or human output to the console."""
         if self.output_format == "table" and render is not None:
-            render(self.console())
+            # rich absorbs a closed pipe through on_broken_pipe on POSIX, but on
+            # Windows the write raises OSError(EINVAL) past it, so catch it here.
+            try:
+                render(self.console())
+            except OSError as error:
+                self._absorb_closed_pipe(error)
             return
         if self.output_format == "patch":
             if patch_text is None:
@@ -296,8 +313,14 @@ class CLIState:
         try:
             sys.stdout.write(text)
             sys.stdout.flush()
-        except BrokenPipeError:
+        except OSError as error:
+            self._absorb_closed_pipe(error)
+
+    def _absorb_closed_pipe(self, error: OSError) -> None:
+        """Treat a reader that closed the pipe as success; re-raise anything else."""
+        if _is_closed_pipe(error):
             self.discard_closed_stdout()
+        raise error
 
 
 def state_of(ctx: typer.Context) -> CLIState:

@@ -1670,7 +1670,6 @@ def test_attribute_search_refuses_the_object_name_filter(
     eq(code, 10)
 
 
-@skip_on_windows
 def test_attribute_search_treats_a_closed_pipe_as_success(
     cli_servers: tuple[Path, FakeMisp, FakeMisp], env: dict[str, str], tmp_path: Path
 ) -> None:

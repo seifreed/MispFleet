@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import logging
 import sys
+from collections.abc import Iterator
 from datetime import timedelta
 from pathlib import Path
 
@@ -43,7 +45,7 @@ from mispfleet.exceptions import (
     UnsafePlanError,
 )
 from mispfleet.logging import LOGGER_NAME
-from tests.support import contains, eq, ok, skip_on_windows
+from tests.support import contains, eq, ok
 
 CONFIG_TEXT = """
 version: 1
@@ -270,7 +272,19 @@ def test_guard_maps_an_interrupt_to_the_cancelled_exit_code() -> None:
     eq(excinfo.value.exit_code, EXIT_CANCELLED)
 
 
-@skip_on_windows
+@contextlib.contextmanager
+def _redirected_stdout(tmp_path: Path) -> Iterator[None]:
+    """Point stdout at a throwaway file so discard_closed_stdout can dup2 it."""
+    sink = (tmp_path / "stdout").open("w")
+    saved = sys.stdout
+    sys.stdout = sink
+    try:
+        yield
+    finally:
+        sys.stdout = saved
+        sink.close()
+
+
 def test_a_reader_closing_the_pipe_is_not_an_error() -> None:
     """`mispfleet ... | head` must exit 0 without stderr noise."""
     import os
@@ -300,9 +314,12 @@ def test_unknown_role_selector_is_a_usage_error() -> None:
         CLIState(roles=["not-a-role"]).selector()
 
 
-@skip_on_windows
 def test_a_closed_pipe_during_table_output_is_not_an_error() -> None:
-    """rich's default handler exits 1; the machine formats exit 0 for this."""
+    """rich's default handler exits 1; the machine formats exit 0 for this.
+
+    On POSIX rich absorbs it via on_broken_pipe (SystemExit); on Windows the
+    write raises OSError(EINVAL) which ``emit`` absorbs to typer.Exit — both 0.
+    """
     import os
 
     read_fd, write_fd = os.pipe()
@@ -311,9 +328,33 @@ def test_a_closed_pipe_during_table_output_is_not_an_error() -> None:
     saved = sys.stdout
     sys.stdout = broken
     try:
-        console = CLIState().console()
-        with pytest.raises(SystemExit) as excinfo:
-            console.print("x" * 200_000)
-        eq(excinfo.value.code, 0)
+        state = CLIState(output_format="table")
+        with pytest.raises((SystemExit, typer.Exit)) as excinfo:
+            state.emit("x", {}, render=lambda console: console.print("x" * 200_000))
+        eq(getattr(excinfo.value, "exit_code", getattr(excinfo.value, "code", None)), 0)
     finally:
         sys.stdout = saved
+
+
+def test_table_output_absorbs_a_windows_closed_pipe(tmp_path: Path) -> None:
+    """Windows raises OSError(EINVAL) on a closed pipe, which emit treats as 0."""
+    import errno
+
+    def render(_: object) -> None:
+        raise OSError(errno.EINVAL, "closed")
+
+    with _redirected_stdout(tmp_path), pytest.raises(typer.Exit) as excinfo:
+        CLIState(output_format="table").emit("x", {}, render=render)
+    eq(excinfo.value.exit_code, 0)
+
+
+def test_table_output_reraises_a_non_pipe_error(tmp_path: Path) -> None:
+    """An error that is not a closed pipe must not be swallowed."""
+    import errno
+
+    def render(_: object) -> None:
+        raise OSError(errno.ENOENT, "gone")
+
+    with _redirected_stdout(tmp_path), pytest.raises(OSError) as excinfo:
+        CLIState(output_format="table").emit("x", {}, render=render)
+    eq(excinfo.value.errno, errno.ENOENT)
