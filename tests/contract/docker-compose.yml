@@ -1,0 +1,79 @@
+name: mispfleet-contract
+
+# Brings up one real MISP release for contract testing. Select the version
+# with MISP_IMAGE_TAG and the published port with MISP_HTTPS_PORT, then point
+# the tests at it:
+#
+#   MISP_IMAGE_TAG=core-v2.5.0 MISP_HTTPS_PORT=8443 \
+#     docker compose -f tests/contract/docker-compose.yml up -d
+#   MISPFLEET_CONTRACT_URL=https://localhost:8443 \
+#   MISPFLEET_CONTRACT_KEY=<automation key> \
+#     pytest tests/contract -q
+#
+# For a multiserver fleet, run the same file twice under different project
+# names (see docs/acceptance.md):
+#
+#   MISP_HTTPS_PORT=10443 docker compose -p misp-research \
+#     -f tests/contract/docker-compose.yml up -d
+#   MISP_HTTPS_PORT=20443 docker compose -p misp-production \
+#     -f tests/contract/docker-compose.yml up -d
+#
+# See docs/compatibility.md for the supported version matrix.
+
+services:
+  misp:
+    image: ghcr.io/misp/misp-docker/misp-core:${MISP_IMAGE_TAG:-latest}
+    environment:
+      BASE_URL: https://localhost:${MISP_HTTPS_PORT:-8443}
+      ADMIN_EMAIL: ${MISP_ADMIN_EMAIL:-admin@admin.test}
+      ADMIN_KEY: ${MISPFLEET_CONTRACT_KEY:?set MISPFLEET_CONTRACT_KEY}
+      MYSQL_HOST: db
+      MYSQL_USER: misp
+      MYSQL_PASSWORD: ${MISP_DB_PASSWORD:-misp}
+      MYSQL_DATABASE: misp
+      REDIS_HOST: valkey
+      REDIS_PASSWORD: ${MISP_REDIS_PASSWORD:-redispassword}
+      DISABLE_IPV6: "true"
+    ports:
+      - "${MISP_HTTPS_PORT:-8443}:443"
+    depends_on:
+      db:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sfk", "https://localhost/users/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+
+  db:
+    image: mariadb:11.4
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_USER: misp
+      MYSQL_PASSWORD: ${MISP_DB_PASSWORD:-misp}
+      MYSQL_DATABASE: misp
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  valkey:
+    image: valkey/valkey:7.2
+    command:
+      [
+        "valkey-server",
+        "--requirepass",
+        "${MISP_REDIS_PASSWORD:-redispassword}",
+      ]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "valkey-cli -a ${MISP_REDIS_PASSWORD:-redispassword} ping | grep -q PONG",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30

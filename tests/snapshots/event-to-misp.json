@@ -1,0 +1,84 @@
+{
+  "Attribute": [
+    {
+      "Tag": [
+        {
+          "name": "tlp:green"
+        }
+      ],
+      "category": "Network activity",
+      "comment": "",
+      "deleted": false,
+      "disable_correlation": false,
+      "to_ids": true,
+      "type": "domain",
+      "uuid": "1f2b8a1e-0000-4000-8000-000000000001",
+      "value": "evil.example"
+    }
+  ],
+  "Galaxy": [
+    {
+      "GalaxyCluster": [
+        {
+          "value": "APT-X"
+        }
+      ],
+      "name": "Threat Actor"
+    }
+  ],
+  "Object": [
+    {
+      "Attribute": [
+        {
+          "Tag": [],
+          "comment": "",
+          "deleted": false,
+          "disable_correlation": false,
+          "to_ids": false,
+          "type": "sha256",
+          "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "ObjectReference": [
+        {
+          "referenced_uuid": "1f2b8a1e-0000-4000-8000-000000000001",
+          "relationship_type": "related-to"
+        }
+      ],
+      "comment": "",
+      "name": "file",
+      "template_uuid": "t-1",
+      "uuid": "3a5c1c2e-0000-4000-8000-00000000000f"
+    }
+  ],
+  "Orgc": {
+    "name": "CIRCL",
+    "uuid": "5c5c1c2e-0000-4000-8000-000000000010"
+  },
+  "ShadowAttribute": [
+    {
+      "to_ids": false,
+      "type": "domain",
+      "value": "proposed.example"
+    }
+  ],
+  "Sighting": [
+    {
+      "attribute_uuid": "1f2b8a1e-0000-4000-8000-000000000001",
+      "type": "0"
+    }
+  ],
+  "Tag": [
+    {
+      "name": "tlp:green"
+    }
+  ],
+  "analysis": "1",
+  "date": "2026-01-01",
+  "distribution": "1",
+  "info": "Campaign X",
+  "published": true,
+  "sharing_group_id": "3",
+  "threat_level_id": "2",
+  "uuid": "9c5c1c2e-0000-4000-8000-00000000000e"
+}

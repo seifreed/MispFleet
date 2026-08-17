@@ -1,0 +1,289 @@
+"""CLI entry point: global options and command registration."""
+
+from __future__ import annotations
+
+import math
+from pathlib import Path
+from typing import Annotated
+
+import typer
+from rich.console import Console
+from typer._click.core import Context as ClickContext
+from typer._click.shell_completion import get_completion_class
+from typer._completion_classes import completion_init
+from typer.core import TyperGroup
+from typer.main import get_command
+
+from mispfleet._version import __version__
+from mispfleet.cli.commands import attribute as attribute_commands
+from mispfleet.cli.commands import config as config_commands
+from mispfleet.cli.commands import event as event_commands
+from mispfleet.cli.commands import opencti as opencti_commands
+from mispfleet.cli.commands import plugins as plugin_commands
+from mispfleet.cli.commands import policy as policy_commands
+from mispfleet.cli.commands import search as search_commands
+from mispfleet.cli.commands import servers as server_commands
+from mispfleet.cli.commands import sightings as sighting_commands
+from mispfleet.cli.commands import state as state_commands
+from mispfleet.cli.commands import stix as stix_commands
+from mispfleet.cli.commands import sync as sync_commands
+from mispfleet.cli.commands.apply import apply_plan
+from mispfleet.cli.context import CLIState
+from mispfleet.logging import LOG_LEVELS
+
+_GLOBAL_FLAGS = frozenset(
+    {
+        "--all",
+        "--no-color",
+        "--quiet",
+        "--verbose",
+        "--non-interactive",
+        "--trace",
+        "--no-verify-tls",
+    }
+)
+
+_GLOBAL_VALUE_OPTIONS = frozenset(
+    {
+        "--config",
+        "--profile",
+        "--server",
+        "--group",
+        "--role",
+        "--tag",
+        "--exclude-server",
+        "--format",
+        "--output",
+        "--log-level",
+        "--log-format",
+        "--timeout",
+        "--concurrency",
+    }
+)
+
+
+class GlobalOptionsGroup(TyperGroup):
+    """Accepts global options anywhere on the command line.
+
+    The specified CLI allows ``mispfleet search value X --all --format json``;
+    click normally requires group options before the subcommand, so known
+    global options are hoisted to the front before parsing. An option the
+    target subcommand declares itself is never hoisted: ``config add-server
+    --role`` sets the new server's role and has nothing to do with the global
+    server selector, and hoisting it silently wrote the default instead.
+    That check is what lets ``--tag`` be hoisted at all: ``search events``
+    and friends filter by their own ``--tag``, while ``health --tag prod``
+    reaches the global selector the documentation promises.
+    """
+
+    def _own_options(self, ctx: ClickContext, args: list[str]) -> frozenset[str]:
+        """Option strings declared by the subcommand these args resolve to."""
+        command: object = self
+        index = 0
+        while index < len(args):
+            argument = args[index]
+            if argument == "--":
+                break
+            if argument.startswith("-"):
+                key = argument.split("=", 1)[0]
+                index += 2 if key in _GLOBAL_VALUE_OPTIONS and "=" not in argument else 1
+                continue
+            resolve = getattr(command, "get_command", None)
+            if resolve is None:
+                break
+            found = resolve(ctx, argument)
+            if found is None:
+                break
+            command = found
+            index += 1
+        if command is self:
+            return frozenset()
+        params = getattr(command, "params", ())
+        return frozenset(
+            option for param in params for option in (*param.opts, *param.secondary_opts)
+        )
+
+    def parse_args(self, ctx: ClickContext, args: list[str]) -> list[str]:
+        shadowed = self._own_options(ctx, args)
+        front: list[str] = []
+        rest: list[str] = []
+        index = 0
+        while index < len(args):
+            argument = args[index]
+            if argument == "--":
+                # Everything past the end-of-options separator is a value, so
+                # hoisting it would turn an indicator like '--all' into a flag.
+                rest.extend(args[index:])
+                break
+            key = argument.split("=", 1)[0]
+            if key in shadowed:
+                rest.append(argument)
+                index += 1
+            elif argument in _GLOBAL_FLAGS or (key in _GLOBAL_VALUE_OPTIONS and "=" in argument):
+                front.append(argument)
+                index += 1
+            elif argument in _GLOBAL_VALUE_OPTIONS and index + 1 < len(args):
+                front.extend(args[index : index + 2])
+                index += 2
+            else:
+                rest.append(argument)
+                index += 1
+        return super().parse_args(ctx, front + rest)
+
+
+app = typer.Typer(
+    name="mispfleet",
+    help="Operate multiple MISP instances as a coordinated fleet.",
+    no_args_is_help=True,
+    cls=GlobalOptionsGroup,
+)
+
+app.add_typer(config_commands.app, name="config")
+app.add_typer(server_commands.app, name="servers")
+app.add_typer(search_commands.app, name="search")
+app.add_typer(event_commands.app, name="event")
+app.add_typer(attribute_commands.app, name="attribute")
+app.add_typer(policy_commands.app, name="policy")
+app.add_typer(state_commands.app, name="state")
+app.add_typer(sync_commands.app, name="sync")
+app.add_typer(sighting_commands.app, name="sightings")
+app.add_typer(stix_commands.app, name="stix")
+app.add_typer(opencti_commands.app, name="opencti")
+app.add_typer(plugin_commands.app, name="plugins")
+app.command("apply")(apply_plan)
+app.command("health")(server_commands.health)
+
+
+@app.command()
+def version() -> None:
+    """Print the mispfleet version."""
+    typer.echo(__version__)
+
+
+@app.command()
+def completion(
+    shell: Annotated[str, typer.Argument(help="Target shell: bash, zsh or fish.")],
+) -> None:
+    """Print the shell completion script for the given shell."""
+    completion_init()
+    completion_class = get_completion_class(shell)
+    if completion_class is None:
+        raise typer.BadParameter(f"unsupported shell {shell!r}; expected bash, zsh or fish")
+    command = get_command(app)
+    source = completion_class(command, {}, "mispfleet", "_MISPFLEET_COMPLETE").source()
+    typer.echo(source)
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(__version__)
+        raise typer.Exit()
+
+
+@app.callback()
+def main_callback(
+    ctx: typer.Context,
+    config: Annotated[
+        Path | None, typer.Option("--config", envvar="MISPFLEET_CONFIG", help="Config file path.")
+    ] = None,
+    profile: Annotated[
+        str | None, typer.Option(envvar="MISPFLEET_PROFILE", help="Configuration profile.")
+    ] = None,
+    server: Annotated[list[str] | None, typer.Option("--server", help="Select by name.")] = None,
+    group: Annotated[list[str] | None, typer.Option("--group", help="Select by group.")] = None,
+    tag: Annotated[list[str] | None, typer.Option("--tag", help="Select by tag.")] = None,
+    role: Annotated[list[str] | None, typer.Option("--role", help="Select by role.")] = None,
+    select_all: Annotated[bool, typer.Option("--all", help="Select every enabled server.")] = False,
+    exclude_server: Annotated[
+        list[str] | None, typer.Option("--exclude-server", help="Exclude a server.")
+    ] = None,
+    output_format: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            envvar="MISPFLEET_OUTPUT",
+            help="table, json, jsonl, yaml or patch (event diff only).",
+        ),
+    ] = "table",
+    output: Annotated[Path | None, typer.Option(help="Write machine output to a file.")] = None,
+    log_level: Annotated[
+        str, typer.Option(envvar="MISPFLEET_LOG_LEVEL", help="debug, info, warning or error.")
+    ] = "warning",
+    log_format: Annotated[str, typer.Option(help="Log format: text or json.")] = "text",
+    no_color: Annotated[
+        bool, typer.Option("--no-color", envvar="MISPFLEET_NO_COLOR", help="Disable color.")
+    ] = False,
+    quiet: Annotated[bool, typer.Option("--quiet", help="Only errors on stderr.")] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", help="Debug logging.")] = False,
+    timeout: Annotated[
+        float | None, typer.Option(help="Override per-request timeout (seconds).")
+    ] = None,
+    concurrency: Annotated[
+        int | None, typer.Option(help="Override per-server concurrency.")
+    ] = None,
+    non_interactive: Annotated[
+        bool, typer.Option("--non-interactive", help="Never prompt for input.")
+    ] = False,
+    trace: Annotated[bool, typer.Option("--trace", help="Raw tracebacks for debugging.")] = False,
+    no_verify_tls: Annotated[
+        bool,
+        typer.Option(
+            "--no-verify-tls",
+            help="Disable TLS certificate verification for every server (dangerous).",
+        ),
+    ] = False,
+    version: Annotated[
+        bool,
+        typer.Option("--version", callback=_version_callback, is_eager=True, help="Show version."),
+    ] = False,
+) -> None:
+    """Collect global options shared by every command."""
+    if output_format not in ("table", "json", "jsonl", "yaml", "patch"):
+        raise typer.BadParameter(f"unsupported format {output_format!r}")
+    if log_level.lower() not in LOG_LEVELS:
+        raise typer.BadParameter(f"unsupported log level {log_level!r}")
+    # Unvalidated, anything but the exact string "json" fell back to text, so
+    # --log-format JSON silently produced the format it did not ask for.
+    if log_format not in ("text", "json"):
+        raise typer.BadParameter(f"unsupported log format {log_format!r}")
+    # These bypass the model constraints: the overrides are applied with
+    # model_copy(update=...), which does not re-validate. A concurrency of 0
+    # builds a Semaphore nothing can ever acquire, hanging every request.
+    if timeout is not None and (not math.isfinite(timeout) or timeout <= 0):
+        raise typer.BadParameter("--timeout must be greater than 0")
+    if concurrency is not None and concurrency < 1:
+        raise typer.BadParameter("--concurrency must be at least 1")
+    state = CLIState(
+        config_path=config,
+        profile=profile,
+        servers=list(server or []),
+        groups=list(group or []),
+        tags=list(tag or []),
+        roles=list(role or []),
+        excluded=list(exclude_server or []),
+        select_all=select_all,
+        output_format=output_format,
+        output_path=output,
+        log_level=log_level,
+        log_format=log_format,
+        no_color=no_color,
+        quiet=quiet,
+        verbose=verbose,
+        timeout=timeout,
+        concurrency=concurrency,
+        non_interactive=non_interactive,
+        trace=trace,
+        no_verify_tls=no_verify_tls,
+    )
+    state.configure_logging()
+    if no_verify_tls:
+        Console(stderr=True, no_color=no_color).print(
+            "[yellow]warning[/yellow]: TLS certificate verification is DISABLED "
+            "for every server (--no-verify-tls)"
+        )
+    ctx.obj = state
+
+
+def main() -> None:
+    """Console-script entry point."""
+    app()
